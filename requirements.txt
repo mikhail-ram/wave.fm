@@ -1,0 +1,6 @@
+lyricsgenius
+yt-dlp
+chromadb
+torch
+python-dotenv
+tqdm
