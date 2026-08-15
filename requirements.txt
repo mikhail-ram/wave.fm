@@ -4,3 +4,6 @@ chromadb
 torch
 python-dotenv
 tqdm
+fastapi
+uvicorn[standard]
+pydantic

@@ -20,7 +20,7 @@ export const RecommendationCard = ({
   const backgroundColor = `hsl(${hue}, 70%, 45%)`;
   
   return (
-    <div className="bg-card border-2 border-foreground shadow-retro p-4 font-retro hover:shadow-[4px_4px_0px_hsl(var(--foreground))] transition-shadow">
+    <div className="bg-card border-2 border-foreground shadow-retro p-4 font-retro hover:shadow-[4px_4px_0px_hsl(var(--foreground))] transition-shadow mr-2 mb-2 max-w-[calc(100%-8px)]">
       <div className="flex items-center gap-3">
         <Button
           onClick={onPlay}
@@ -30,13 +30,13 @@ export const RecommendationCard = ({
           <Play className="h-3 w-3" />
         </Button>
         
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 pr-2">
           <h3 className="text-sm font-bold text-foreground truncate">{title}</h3>
           <p className="text-xs text-muted-foreground truncate">{artist}</p>
         </div>
         
         <div 
-          className="border-2 border-foreground px-2 py-1 text-xs font-bold font-retro text-white"
+          className="border-2 border-foreground px-2 py-1 text-xs font-bold font-retro text-white shrink-0"
           style={{ backgroundColor }}
         >
           {score}%

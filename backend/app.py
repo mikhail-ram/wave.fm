@@ -187,17 +187,93 @@ def _get_nth_id(collection, n: Optional[int] = None) -> str:
     return ids[n]
 
 
-query_id = _get_nth_id(audio_collection)
-print(f"Query ID: {query_id}")
-top_results = recommend_similar_tracks(
-    audio_collection=audio_collection,
-    text_collection=text_collection,
-    query_id=query_id,
-    candidate_n=50,
-    top_k=5,
-    audio_weight=0.5,
-)
-for item in top_results:
-    print(item)  # (id, combined_score, sim_audio, sim_text)
+def interpolate_tracks(
+    audio_collection,
+    text_collection,
+    source_id: str,
+    dest_id: str,
+    n_steps: int,
+    audio_weight: float = 0.5,
+) -> List[Dict]:
+    source_audio = _get_single_embedding(audio_collection, source_id)
+    source_text = _get_single_embedding(text_collection, source_id)
+    dest_audio = _get_single_embedding(audio_collection, dest_id)
+    dest_text = _get_single_embedding(text_collection, dest_id)
+    
+    if source_audio is None or dest_audio is None or source_text is None or dest_text is None:
+        raise ValueError("Missing embeddings for source or dest")
+        
+    results = []
+    fractions = [i / (n_steps + 1) for i in range(1, n_steps + 1)]
+    
+    w_audio_global = float(audio_weight)
+    w_text_global = 1.0 - w_audio_global
+    
+    for alpha in fractions:
+        interp_audio = source_audio + alpha * (dest_audio - source_audio)
+        interp_text = source_text + alpha * (dest_text - source_text)
+        
+        norm_audio = np.linalg.norm(interp_audio)
+        if norm_audio > 0: interp_audio /= norm_audio
+        
+        norm_text = np.linalg.norm(interp_text)
+        if norm_text > 0: interp_text /= norm_text
+        
+        candidate_n = 50
+        neighbor_audio_ids = _query_neighbors(audio_collection, interp_audio.tolist(), candidate_n)
+        neighbor_text_ids = _query_neighbors(text_collection, interp_text.tolist(), candidate_n)
+        
+        combined_candidate_ids = list(dict.fromkeys(list(neighbor_audio_ids) + list(neighbor_text_ids)))
+        
+        if source_id in combined_candidate_ids: combined_candidate_ids.remove(source_id)
+        if dest_id in combined_candidate_ids: combined_candidate_ids.remove(dest_id)
+        existing_ids = [r["id"] for r in results]
+        combined_candidate_ids = [c for c in combined_candidate_ids if c not in existing_ids]
+        
+        audio_embeddings_map = _fetch_embeddings_map(audio_collection, combined_candidate_ids)
+        text_embeddings_map = _fetch_embeddings_map(text_collection, combined_candidate_ids)
+        
+        best_candidate = None
+        best_score = -float('inf')
+        
+        for cid in combined_candidate_ids:
+            has_audio = cid in audio_embeddings_map
+            has_text = cid in text_embeddings_map
+            if not (has_audio or has_text): continue
+            
+            w_a, w_t = (w_audio_global, w_text_global) if (has_audio and has_text) else (1.0, 0.0) if has_audio else (0.0, 1.0)
+                
+            sim_audio = _dot_product(interp_audio, audio_embeddings_map[cid]) if has_audio else 0.0
+            sim_text = _dot_product(interp_text, text_embeddings_map[cid]) if has_text else 0.0
+            
+            combined_score = w_a * sim_audio + w_t * sim_text
+            
+            if combined_score > best_score:
+                best_score = combined_score
+                best_candidate = {
+                    "id": cid,
+                    "sim_combined": combined_score,
+                    "sim_audio": sim_audio,
+                    "sim_text": sim_text
+                }
+                
+        if best_candidate:
+            results.append(best_candidate)
+            
+    return results
 
-print(text_collection.peek())
+if __name__ == "__main__":
+    query_id = _get_nth_id(audio_collection)
+    print(f"Query ID: {query_id}")
+    top_results = recommend_similar_tracks(
+        audio_collection=audio_collection,
+        text_collection=text_collection,
+        query_id=query_id,
+        candidate_n=50,
+        top_k=5,
+        audio_weight=0.5,
+    )
+    for item in top_results:
+        print(item)  # (id, combined_score, sim_audio, sim_text)
+
+    print(text_collection.peek())
