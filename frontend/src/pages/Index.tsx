@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { CurrentTrack } from "@/components/CurrentTrack";
-import { RecommendationList } from "@/components/RecommendationList";
-import { BottomNavigation } from "@/components/BottomNavigation";
+import { GraphCanvas } from "@/components/GraphCanvas";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -17,18 +16,23 @@ const Index = () => {
     artist: "Loading...",
     videoId: "",
   });
-  const [recommendations, setRecommendations] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
+  // Graph state
+  const [graphData, setGraphData] = useState({ nodes: [], links: [] });
+  
   // Interpolate state
+  const [sourceTrackId, setSourceTrackId] = useState("");
   const [destTrackId, setDestTrackId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [nSteps, setNSteps] = useState([3]);
+  const [highlightedPathIds, setHighlightedPathIds] = useState<string[]>([]);
+  const [ghostNodes, setGhostNodes] = useState<any[]>([]);
 
-  // Handle clicking outside to close dropdown
   const searchContainerRef = useRef<HTMLDivElement>(null);
+  
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
@@ -39,39 +43,40 @@ const Index = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const fetchRecommendations = async (queryId?: string, weightValue?: number) => {
-    setIsLoading(true);
-    try {
-      const weight = (weightValue ?? audioLyricsValue[0]) / 100;
-      let url = `http://localhost:8000/api/recommend?audio_weight=${weight}`;
-      if (queryId) {
-        url += `&query_id=${queryId}`;
-      }
-      
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("API error");
-      const data = await response.json();
-      
-      setCurrentTrack(data.query_track);
-      setRecommendations(data.recommendations);
-    } catch (error) {
-      console.error("Failed to fetch recommendations", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Fetch massive graph data on mount
+  useEffect(() => {
+    fetch("http://localhost:8000/api/graph")
+      .then(res => res.json())
+      .then(data => {
+        setGraphData(data);
+        if (data.nodes.length > 0) {
+          const first = data.nodes[0];
+          setCurrentTrack({
+            id: first.id,
+            title: first.title,
+            artist: first.artist,
+            videoId: first.videoId
+          });
+          setSourceTrackId(first.id);
+        }
+      })
+      .catch(err => console.error("Failed to load graph", err));
+  }, []);
 
-  const fetchInterpolation = async (weightValue?: number) => {
-    if (!currentTrack.id || !destTrackId) return;
+  const fetchInterpolation = async () => {
+    if (!sourceTrackId || !destTrackId) return;
     setIsLoading(true);
+    setHighlightedPathIds([]);
+    
     try {
-      const weight = (weightValue ?? audioLyricsValue[0]) / 100;
-      let url = `http://localhost:8000/api/interpolate?source_id=${currentTrack.id}&dest_id=${destTrackId}&n_steps=${nSteps[0]}&audio_weight=${weight}`;
+      const weight = audioLyricsValue[0] / 100;
+      const url = `http://localhost:8000/api/interpolate?source_id=${sourceTrackId}&dest_id=${destTrackId}&n_steps=${nSteps[0]}&audio_weight=${weight}`;
       const response = await fetch(url);
       if (!response.ok) throw new Error("API error");
       const data = await response.json();
       
-      setRecommendations(data.interpolated_tracks);
+      const ids = data.interpolated_tracks.map((t: any) => t.id);
+      setHighlightedPathIds([sourceTrackId, ...ids, destTrackId]);
     } catch (error) {
       console.error("Failed to fetch interpolation", error);
     } finally {
@@ -79,10 +84,15 @@ const Index = () => {
     }
   };
 
-  // Search effect
+  // Search effect (debounced)
+  const isInternalSearchUpdate = useRef(false);
   useEffect(() => {
-    if (!searchQuery || destTrackId) {
+    if (!searchQuery) {
       setSearchResults([]);
+      return;
+    }
+    if (isInternalSearchUpdate.current) {
+      isInternalSearchUpdate.current = false;
       return;
     }
     
@@ -95,111 +105,108 @@ const Index = () => {
         })
         .catch(err => console.error(err));
     }, 300);
-
     return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery, destTrackId]);
+  }, [searchQuery]);
 
-  useEffect(() => {
+  const handleNodeClick = (node: any) => {
+    setCurrentTrack({
+      id: node.id,
+      title: node.title,
+      artist: node.artist,
+      videoId: node.videoId,
+    });
+    
     if (activeTab === "discover") {
-      fetchRecommendations(currentTrack.id || undefined);
-    }
-  }, [activeTab]);
-
-  useEffect(() => {
-    fetchRecommendations();
-  }, []);
-
-  const handleAudioLyricsChange = (value: number[]) => {
-    setAudioLyricsValue(value);
-    if (activeTab === "discover" && currentTrack.id) {
-        fetchRecommendations(currentTrack.id, value[0]);
-    } else if (activeTab === "interpolate" && destTrackId) {
-        fetchInterpolation(value[0]);
-    }
-  };
-
-  const handleTrackPlay = (trackId: string) => {
-    if (activeTab === "discover") {
-      fetchRecommendations(trackId);
-    } else {
-      // In interpolate mode, just preview the track without wiping the queue
-      const track = recommendations.find((t: any) => t.id === trackId);
-      if (track) {
-        setCurrentTrack({
-          id: track.id,
-          title: track.title,
-          artist: track.artist,
-          videoId: track.videoId,
-        });
-      }
+      setSourceTrackId(node.id);
+      setHighlightedPathIds([]);
     }
   };
 
   return (
-    <div className="min-h-screen bg-background font-retro pb-20">
-      {/* Header */}
-      <div className="flex justify-end p-4">
-        <h1 className="text-2xl font-bold text-foreground font-retro">wave.fm</h1>
+    <div className="relative w-screen h-screen overflow-hidden bg-black font-sans text-white">
+      {/* 3D Physics Graph Canvas */}
+      <GraphCanvas
+        graphData={graphData}
+        audioWeight={audioLyricsValue[0] / 100}
+        onNodeClick={handleNodeClick}
+        selectedNodeId={currentTrack.id}
+        sourceNodeId={activeTab === "interpolate" ? sourceTrackId : undefined}
+        destNodeId={activeTab === "interpolate" ? destTrackId : undefined}
+        highlightedPathIds={activeTab === "interpolate" ? highlightedPathIds : []}
+        ghostNodes={ghostNodes}
+      />
+
+      {/* Floating HUD - Top Left - Logo & Tabs */}
+      <div className="absolute top-6 left-6 z-10 w-80">
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl">
+          <h1 className="text-3xl font-bold tracking-widest uppercase mb-6" style={{ fontFamily: 'system-ui, sans-serif' }}>wave.fm</h1>
+          <div className="flex gap-2 bg-black/40 p-1 rounded-lg">
+            <button 
+              className={`flex-1 py-2 text-xs font-bold tracking-widest uppercase rounded-md transition-all ${activeTab === 'discover' ? 'bg-white text-black' : 'text-white/50 hover:text-white'}`}
+              onClick={() => setActiveTab('discover')}
+            >
+              Discover
+            </button>
+            <button 
+              className={`flex-1 py-2 text-xs font-bold tracking-widest uppercase rounded-md transition-all ${activeTab === 'interpolate' ? 'bg-white text-black' : 'text-white/50 hover:text-white'}`}
+              onClick={() => setActiveTab('interpolate')}
+            >
+              Interpolate
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 max-w-7xl mx-auto lg:items-start">
-        {/* Left Panel - Current Track */}
-        <div className="order-1 lg:order-1 flex flex-col gap-6">
-          <CurrentTrack
-            title={currentTrack.title}
-            artist={currentTrack.artist}
-            videoId={currentTrack.videoId}
-            audioLyricsValue={audioLyricsValue}
-            onAudioLyricsChange={handleAudioLyricsChange}
-          />
-          
-          {activeTab === "interpolate" && (
-            <div className="bg-card border-2 border-foreground shadow-retro p-4 font-retro space-y-4">
-              <h2 className="text-lg font-bold text-foreground">INTERPOLATION</h2>
-              <div className="space-y-2 relative" ref={searchContainerRef}>
-                <Label>Destination Track</Label>
+      {/* Floating HUD - Left Side Controls */}
+      <div className="absolute top-52 left-6 z-10 w-80 space-y-4">
+        {activeTab === "interpolate" && (
+          <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl space-y-6">
+            <div className="space-y-4 relative" ref={searchContainerRef}>
+              <div>
+                <Label className="text-[10px] tracking-widest uppercase text-white/50">Destination Star</Label>
                 <Input 
-                  placeholder="Search for a song..." 
+                  placeholder="Search galaxy..." 
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
                     if (destTrackId) setDestTrackId("");
                   }}
                   onFocus={() => { if (searchResults.length > 0) setIsDropdownOpen(true); }}
-                  className="font-sans border-2 border-foreground"
+                  className="bg-black/40 border-white/20 text-white placeholder:text-white/30 mt-2"
                 />
                 
                 {isDropdownOpen && searchResults.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border-2 border-foreground shadow-retro z-50 max-h-60 overflow-y-auto">
+                  <div className="absolute top-[60px] left-0 right-0 bg-black/80 backdrop-blur-xl border border-white/20 rounded-lg z-50 max-h-60 overflow-y-auto">
                     {searchResults.map((result) => (
                       <div
                         key={result.id}
-                        className="p-2 border-b-2 border-foreground last:border-b-0 hover:bg-accent hover:text-accent-foreground cursor-pointer font-sans"
+                        className="p-3 border-b border-white/10 last:border-b-0 hover:bg-white/10 cursor-pointer"
                         onClick={() => {
+                          isInternalSearchUpdate.current = true;
                           setDestTrackId(result.id);
-                          setSearchQuery(`${result.title} - ${result.artist}`);
+                          setSearchQuery(`${result.title.toUpperCase()} / ${result.artist.toUpperCase()}`);
                           setIsDropdownOpen(false);
                         }}
                       >
-                        <div className="font-bold text-sm truncate">{result.title}</div>
-                        <div className="text-xs opacity-80 truncate">{result.artist}</div>
+                        <div className="font-serif text-sm truncate">{result.title}</div>
+                        <div className="text-[10px] tracking-widest text-white/50 truncate uppercase">{result.artist}</div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
               
-              <div className="space-y-2 pt-2">
-                <div className="flex justify-between">
-                  <Label>Transition Steps: {nSteps[0]}</Label>
+              <div className="pt-2">
+                <div className="flex justify-between mb-2">
+                  <Label className="text-[10px] tracking-widest uppercase text-white/50">Bridge Distance</Label>
+                  <span className="text-[10px] text-white/50">{nSteps[0]} LY</span>
                 </div>
                 <Slider
                   min={1}
                   max={10}
                   step={1}
                   value={nSteps}
-                  onValueChange={(val) => { setNSteps(val); if(destTrackId) fetchInterpolation(audioLyricsValue[0]); }}
+                  onValueChange={(val) => setNSteps(val)}
                   className="w-full"
                 />
               </div>
@@ -207,29 +214,57 @@ const Index = () => {
               <Button 
                 onClick={() => fetchInterpolation()}
                 disabled={isLoading || !destTrackId}
-                className="w-full bg-primary hover:bg-accent text-primary-foreground border-2 border-foreground shadow-retro mt-2 font-bold"
+                className="w-full bg-white text-black hover:bg-white/90 font-bold tracking-widest text-xs uppercase h-10 mt-4"
               >
-                {isLoading ? "GENERATING..." : "GENERATE TRANSITION"}
+                {isLoading ? "CALCULATING..." : "GENERATE BRIDGE"}
               </Button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Right Panel - Recommendations */}
-        <div className="order-2 lg:order-2 lg:self-stretch min-w-0 min-h-[500px] lg:min-h-0 flex flex-col">
-          <RecommendationList
-            tracks={recommendations}
-            onTrackPlay={handleTrackPlay}
-            title={activeTab === "discover" ? "RECOMMENDATIONS" : "TRANSITION PATH"}
-          />
+        {/* Global Controls - Gravity Slider */}
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4">
+          <Label className="text-[10px] tracking-widest uppercase text-white/50">Gravity Modifier (Audio vs Lyrics)</Label>
+          <div className="pt-2">
+            <Slider
+              min={0}
+              max={100}
+              step={1}
+              value={audioLyricsValue}
+              onValueChange={setAudioLyricsValue}
+              className="w-full"
+            />
+          </div>
+          <div className="flex justify-between text-[10px] tracking-widest uppercase text-white/40">
+            <span>Audio Pull</span>
+            <span>Lyrical Pull</span>
+          </div>
         </div>
       </div>
 
-      {/* Bottom Navigation */}
-      <BottomNavigation
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-      />
+      {/* Floating HUD - Bottom Center - Player */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 w-[400px]">
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 shadow-2xl">
+          <div className="text-[10px] tracking-widest uppercase text-white/50 mb-3 text-center">NOW TRANSMITTING</div>
+          {currentTrack.videoId ? (
+            <div className="rounded-xl overflow-hidden pointer-events-auto h-[100px]">
+              <iframe
+                width="100%"
+                height="100%"
+                src={`https://www.youtube.com/embed/${currentTrack.videoId}?autoplay=1&controls=1`}
+                title={currentTrack.title}
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              ></iframe>
+            </div>
+          ) : (
+            <div className="h-[100px] flex items-center justify-center bg-black/40 rounded-xl">
+              <span className="text-white/30 text-xs tracking-widest uppercase">No Signal</span>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 };

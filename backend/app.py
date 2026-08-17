@@ -262,6 +262,65 @@ def interpolate_tracks(
             
     return results
 
+def generate_graph_data(audio_collection, text_collection, top_k: int = 10) -> Dict:
+    """Generate nodes and links for the entire dataset to render a force-directed graph."""
+    total = audio_collection.count()
+    if total == 0:
+        return {"nodes": [], "links": []}
+        
+    resp = audio_collection.get(include=["embeddings", "metadatas"], limit=total)
+    ids = resp.get("ids", [])
+    audio_embeddings = resp.get("embeddings", [])
+    metadatas = resp.get("metadatas", [])
+    
+    text_resp = text_collection.get(ids=ids, include=["embeddings"])
+    text_emb_map = {i: e for i, e in zip(text_resp.get("ids", []), text_resp.get("embeddings", []))}
+    
+    nodes = []
+    audio_map = {}
+    for i, cid in enumerate(ids):
+        m = metadatas[i] or {}
+        nodes.append({
+            "id": cid,
+            "title": m.get("title", "Unknown"),
+            "artist": m.get("artist", "Unknown"),
+            "videoId": cid.replace("yt:", "")
+        })
+        audio_map[cid] = np.asarray(audio_embeddings[i], dtype=float)
+        
+    links = []
+    # Calculate top_k links for each node
+    for i, cid in enumerate(ids):
+        a_emb = audio_map[cid]
+        t_emb = np.asarray(text_emb_map[cid], dtype=float) if cid in text_emb_map else None
+        
+        # Calculate similarities to all other nodes
+        scored = []
+        for j, target_id in enumerate(ids):
+            if cid == target_id: continue
+            
+            target_a = audio_map[target_id]
+            target_t = np.asarray(text_emb_map[target_id], dtype=float) if target_id in text_emb_map else None
+            
+            sim_a = _dot_product(a_emb, target_a)
+            sim_t = _dot_product(t_emb, target_t) if t_emb is not None and target_t is not None else 0.0
+            
+            combined = 0.5 * sim_a + 0.5 * sim_t
+            scored.append({"target": target_id, "sim_a": sim_a, "sim_t": sim_t, "score": combined})
+            
+        scored.sort(key=lambda x: x["score"], reverse=True)
+        top_neighbors = scored[:top_k]
+        
+        for n in top_neighbors:
+            links.append({
+                "source": cid,
+                "target": n["target"],
+                "sim_audio": n["sim_a"],
+                "sim_text": n["sim_t"]
+            })
+            
+    return {"nodes": nodes, "links": links}
+
 if __name__ == "__main__":
     query_id = _get_nth_id(audio_collection)
     print(f"Query ID: {query_id}")

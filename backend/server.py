@@ -169,5 +169,17 @@ def get_interpolation(source_id: str, dest_id: str, n_steps: int = 3, audio_weig
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/graph")
+def get_graph():
+    try:
+        from app import generate_graph_data
+        # We cache this in memory since it's expensive to compute on every request
+        global cached_graph_data
+        if 'cached_graph_data' not in globals():
+            cached_graph_data = generate_graph_data(audio_collection, text_collection, top_k=7)
+        return cached_graph_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
