@@ -32,6 +32,10 @@ class RecommendationResponse(BaseModel):
 
 @app.get("/api/recommend", response_model=RecommendationResponse)
 def get_recommendations(query_id: Optional[str] = None, audio_weight: float = 0.5):
+    """
+    API Endpoint: Handles requests from the Discover Tab.
+    Takes a song ID and an audio/lyric preference slider value, and returns the most similar songs.
+    """
     try:
         # If no query_id provided, pick a random one
         if not query_id:
@@ -117,6 +121,10 @@ except Exception as e:
 
 @app.get("/api/search")
 def search_tracks(q: str):
+    """
+    API Endpoint: Handles text searches.
+    Quickly searches the local memory cache for songs matching the typed text.
+    """
     q = q.lower()
     results = []
     for track in all_tracks_cache:
@@ -128,6 +136,10 @@ def search_tracks(q: str):
 
 @app.get("/api/interpolate", response_model=InterpolateResponse)
 def get_interpolation(source_id: str, dest_id: str, n_steps: int = 3, audio_weight: float = 0.5):
+    """
+    API Endpoint: Handles requests from the Interpolate Tab.
+    Takes a starting song, an ending song, and the desired bridge length, and calculates a smooth path between them.
+    """
     try:
         from app import interpolate_tracks
         top_results = interpolate_tracks(
@@ -170,14 +182,22 @@ def get_interpolation(source_id: str, dest_id: str, n_steps: int = 3, audio_weig
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/graph")
-def get_graph():
+def get_graph(audio_weight: float = 0.5):
+    """
+    API Endpoint: Handles requests to draw the background constellation map.
+    Returns all nodes and their top connections. Caches the result so the physics engine loads instantly on refresh.
+    """
     try:
         from app import generate_graph_data
-        # We cache this in memory since it's expensive to compute on every request
-        global cached_graph_data
-        if 'cached_graph_data' not in globals():
-            cached_graph_data = generate_graph_data(audio_collection, text_collection, top_k=7)
-        return cached_graph_data
+        global graph_cache
+        if 'graph_cache' not in globals():
+            graph_cache = {}
+            
+        weight_key = round(audio_weight, 2)
+        if weight_key not in graph_cache:
+            graph_cache[weight_key] = generate_graph_data(audio_collection, text_collection, top_k=5, audio_weight=audio_weight)
+            
+        return graph_cache[weight_key]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

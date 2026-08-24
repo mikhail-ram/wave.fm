@@ -5,9 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import YouTube from 'react-youtube';
 
 const Index = () => {
   const [audioLyricsValue, setAudioLyricsValue] = useState([50]);
+  const [committedAudioWeight, setCommittedAudioWeight] = useState(0.5);
   const [activeTab, setActiveTab] = useState<"discover" | "interpolate">("discover");
   
   const [currentTrack, setCurrentTrack] = useState({
@@ -17,6 +19,31 @@ const Index = () => {
     videoId: "",
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [player, setPlayer] = useState<any | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const playbackProgressRef = useRef(0);
+  const progressBarRef = useRef<HTMLDivElement>(null);
+
+  // Poll YouTube progress without re-rendering React tree
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isPlaying && player) {
+      interval = setInterval(async () => {
+        try {
+          const currentTime = await player.getCurrentTime();
+          const duration = await player.getDuration();
+          if (duration > 0) {
+            const progress = currentTime / duration;
+            playbackProgressRef.current = progress;
+            if (progressBarRef.current) {
+              progressBarRef.current.style.width = `${progress * 100}%`;
+            }
+          }
+        } catch (e) {}
+      }, 100); // 100ms is fine now since it doesn't trigger React updates
+    }
+    return () => clearInterval(interval);
+  }, [isPlaying, player]);
 
   // Graph state
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
@@ -27,12 +54,23 @@ const Index = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [nSteps, setNSteps] = useState([3]);
+  const [nSteps, setNSteps] = useState([10]);
   const [highlightedPathIds, setHighlightedPathIds] = useState<string[]>([]);
   const [ghostNodes, setGhostNodes] = useState<any[]>([]);
 
   const searchContainerRef = useRef<HTMLDivElement>(null);
-  
+  const [liveWeight, setLiveWeight] = useState(0.5);
+
+  // Debounce the live slider value to avoid flooding the backend
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (committedAudioWeight !== liveWeight) {
+        setCommittedAudioWeight(liveWeight);
+      }
+    }, 150);
+    return () => clearTimeout(handler);
+  }, [liveWeight, committedAudioWeight]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
@@ -43,13 +81,25 @@ const Index = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Fetch massive graph data on mount
+  // Fetch exact top 5 edges from backend when slider is committed (O(N) payload)
   useEffect(() => {
-    fetch("http://localhost:8000/api/graph")
+    fetch(`http://localhost:8000/api/graph?audio_weight=${committedAudioWeight}`)
       .then(res => res.json())
       .then(data => {
-        setGraphData(data);
-        if (data.nodes.length > 0) {
+        setGraphData(prev => {
+          if (prev.nodes.length === 0) return data;
+          
+          // Preserve existing Node Object References for physics stability
+          const existingNodeMap = new Map(prev.nodes.map((n: any) => [n.id, n]));
+          const preservedNodes = data.nodes.map((newNode: any) => {
+            return existingNodeMap.get(newNode.id) || newNode;
+          });
+          
+          return { nodes: preservedNodes, links: data.links };
+        });
+        
+        // Initial setup
+        if (data.nodes.length > 0 && !currentTrack.id) {
           const first = data.nodes[0];
           setCurrentTrack({
             id: first.id,
@@ -61,28 +111,30 @@ const Index = () => {
         }
       })
       .catch(err => console.error("Failed to load graph", err));
-  }, []);
+  }, [committedAudioWeight]);
 
-  const fetchInterpolation = async () => {
-    if (!sourceTrackId || !destTrackId) return;
-    setIsLoading(true);
-    setHighlightedPathIds([]);
-    
-    try {
-      const weight = audioLyricsValue[0] / 100;
-      const url = `http://localhost:8000/api/interpolate?source_id=${sourceTrackId}&dest_id=${destTrackId}&n_steps=${nSteps[0]}&audio_weight=${weight}`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("API error");
-      const data = await response.json();
-      
-      const ids = data.interpolated_tracks.map((t: any) => t.id);
-      setHighlightedPathIds([sourceTrackId, ...ids, destTrackId]);
-    } catch (error) {
-      console.error("Failed to fetch interpolation", error);
-    } finally {
-      setIsLoading(false);
+  useEffect(() => {
+    if (activeTab === "interpolate" && sourceTrackId && destTrackId) {
+      const fetchInterpolation = async () => {
+        setIsLoading(true);
+        // Don't clear highlighted path immediately to avoid flickering while dragging
+        try {
+          const url = `http://localhost:8000/api/interpolate?source_id=${sourceTrackId}&dest_id=${destTrackId}&n_steps=${nSteps[0]}&audio_weight=${committedAudioWeight}`;
+          const response = await fetch(url);
+          if (!response.ok) throw new Error("API error");
+          const data = await response.json();
+          
+          const ids = data.interpolated_tracks.map((t: any) => t.id);
+          setHighlightedPathIds([sourceTrackId, ...ids, destTrackId]);
+        } catch (error) {
+          console.error("Failed to fetch interpolation", error);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      fetchInterpolation();
     }
-  };
+  }, [activeTab, sourceTrackId, destTrackId, nSteps, committedAudioWeight]);
 
   // Search effect (debounced)
   const isInternalSearchUpdate = useRef(false);
@@ -109,6 +161,12 @@ const Index = () => {
   }, [searchQuery]);
 
   const handleNodeClick = (node: any) => {
+    // Reset progress instantly to avoid flashing the old progress on the new edge
+    playbackProgressRef.current = 0;
+    if (progressBarRef.current) {
+      progressBarRef.current.style.width = "0%";
+    }
+    
     setCurrentTrack({
       id: node.id,
       title: node.title,
@@ -127,31 +185,39 @@ const Index = () => {
       {/* 3D Physics Graph Canvas */}
       <GraphCanvas
         graphData={graphData}
-        audioWeight={audioLyricsValue[0] / 100}
+        audioWeight={committedAudioWeight}
         onNodeClick={handleNodeClick}
         selectedNodeId={currentTrack.id}
         sourceNodeId={activeTab === "interpolate" ? sourceTrackId : undefined}
         destNodeId={activeTab === "interpolate" ? destTrackId : undefined}
         highlightedPathIds={activeTab === "interpolate" ? highlightedPathIds : []}
+        playbackProgressRef={playbackProgressRef}
         ghostNodes={ghostNodes}
       />
 
       {/* Floating HUD - Top Left - Logo & Tabs */}
       <div className="absolute top-6 left-6 z-10 w-80">
-        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl">
-          <h1 className="text-3xl font-bold tracking-widest uppercase mb-6" style={{ fontFamily: 'system-ui, sans-serif' }}>wave.fm</h1>
-          <div className="flex gap-2 bg-black/40 p-1 rounded-lg">
+        <div className="bg-black border-2 border-white p-6 relative">
+          <div className="absolute top-1 right-2 text-[8px] font-mono text-white/50">+++ SYS.01</div>
+          <div className="absolute bottom-1 right-2 text-[8px] font-mono text-white/50">[ ///// ]</div>
+          
+          <h1 className="text-4xl font-black tracking-tighter uppercase mb-6" style={{ fontFamily: 'monospace', letterSpacing: '-0.05em' }}>
+            WAVE<span className="text-white/50">.FM</span>
+          </h1>
+          <div className="flex gap-2 border-t-2 border-white pt-4">
             <button 
-              className={`flex-1 py-2 text-xs font-bold tracking-widest uppercase rounded-md transition-all ${activeTab === 'discover' ? 'bg-white text-black' : 'text-white/50 hover:text-white'}`}
+              className={`flex-1 py-2 text-xs font-bold tracking-widest uppercase border-2 transition-all ${activeTab === 'discover' ? 'bg-white text-black border-white' : 'text-white border-transparent hover:border-white/50'}`}
               onClick={() => setActiveTab('discover')}
+              style={{ fontFamily: 'monospace' }}
             >
-              Discover
+              DISCOVER
             </button>
             <button 
-              className={`flex-1 py-2 text-xs font-bold tracking-widest uppercase rounded-md transition-all ${activeTab === 'interpolate' ? 'bg-white text-black' : 'text-white/50 hover:text-white'}`}
+              className={`flex-1 py-2 text-xs font-bold tracking-widest uppercase border-2 transition-all ${activeTab === 'interpolate' ? 'bg-white text-black border-white' : 'text-white border-transparent hover:border-white/50'}`}
               onClick={() => setActiveTab('interpolate')}
+              style={{ fontFamily: 'monospace' }}
             >
-              Interpolate
+              INTERPOLATE
             </button>
           </div>
         </div>
@@ -160,46 +226,49 @@ const Index = () => {
       {/* Floating HUD - Left Side Controls */}
       <div className="absolute top-52 left-6 z-10 w-80 space-y-4">
         {activeTab === "interpolate" && (
-          <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl space-y-6">
-            <div className="space-y-4 relative" ref={searchContainerRef}>
+          <div className="bg-black border-2 border-white p-6 relative">
+            <div className="absolute top-1 right-2 text-[8px] font-mono text-white/50">+++ SYS.02</div>
+            <div className="absolute bottom-1 right-2 text-[8px] font-mono text-white/50">[ ///// ]</div>
+
+            <div className="space-y-6 relative" ref={searchContainerRef}>
               <div>
-                <Label className="text-[10px] tracking-widest uppercase text-white/50">Destination Star</Label>
+                <Label className="text-[10px] tracking-widest uppercase text-white font-bold" style={{ fontFamily: 'monospace' }}>DESTINATION_NODE</Label>
                 <Input 
-                  placeholder="Search galaxy..." 
+                  placeholder="SEARCH_DB..." 
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
                     if (destTrackId) setDestTrackId("");
                   }}
                   onFocus={() => { if (searchResults.length > 0) setIsDropdownOpen(true); }}
-                  className="bg-black/40 border-white/20 text-white placeholder:text-white/30 mt-2"
+                  className="bg-black border-2 border-white text-white rounded-none mt-2 font-mono uppercase"
                 />
                 
                 {isDropdownOpen && searchResults.length > 0 && (
-                  <div className="absolute top-[60px] left-0 right-0 bg-black/80 backdrop-blur-xl border border-white/20 rounded-lg z-50 max-h-60 overflow-y-auto">
+                  <div className="absolute top-[60px] left-0 right-0 bg-black border-2 border-white z-50 max-h-60 overflow-y-auto">
                     {searchResults.map((result) => (
                       <div
                         key={result.id}
-                        className="p-3 border-b border-white/10 last:border-b-0 hover:bg-white/10 cursor-pointer"
+                        className="p-3 border-b-2 border-white/20 last:border-b-0 hover:bg-white hover:text-black cursor-pointer font-mono"
                         onClick={() => {
                           isInternalSearchUpdate.current = true;
                           setDestTrackId(result.id);
-                          setSearchQuery(`${result.title.toUpperCase()} / ${result.artist.toUpperCase()}`);
+                          setSearchQuery(`${result.title.toUpperCase()} // ${result.artist.toUpperCase()}`);
                           setIsDropdownOpen(false);
                         }}
                       >
-                        <div className="font-serif text-sm truncate">{result.title}</div>
-                        <div className="text-[10px] tracking-widest text-white/50 truncate uppercase">{result.artist}</div>
+                        <div className="font-bold text-xs truncate">{result.title.toUpperCase()}</div>
+                        <div className="text-[10px] tracking-widest opacity-70 truncate uppercase">{result.artist}</div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
               
-              <div className="pt-2">
-                <div className="flex justify-between mb-2">
-                  <Label className="text-[10px] tracking-widest uppercase text-white/50">Bridge Distance</Label>
-                  <span className="text-[10px] text-white/50">{nSteps[0]} LY</span>
+              <div className="pt-2 border-t-2 border-white/20">
+                <div className="flex justify-between mb-4">
+                  <Label className="text-[10px] tracking-widest uppercase text-white font-bold" style={{ fontFamily: 'monospace' }}>BRIDGE_DISTANCE</Label>
+                  <span className="text-[10px] text-white font-mono">[{nSteps[0]}_LY]</span>
                 </div>
                 <Slider
                   min={1}
@@ -210,61 +279,116 @@ const Index = () => {
                   className="w-full"
                 />
               </div>
-              
-              <Button 
-                onClick={() => fetchInterpolation()}
-                disabled={isLoading || !destTrackId}
-                className="w-full bg-white text-black hover:bg-white/90 font-bold tracking-widest text-xs uppercase h-10 mt-4"
-              >
-                {isLoading ? "CALCULATING..." : "GENERATE BRIDGE"}
-              </Button>
-            </div>
+                {/* Bridge Relay Status */}
+                {activeTab === "interpolate" && highlightedPathIds.length > 0 && (
+                  <div className="flex items-center justify-between mt-6 pt-3 border-t border-white/20">
+                    <div className="flex gap-1">
+                      {Array.from({ length: nSteps[0] }).map((_, i) => {
+                        const established = Math.max(0, highlightedPathIds.length - 2);
+                        return (
+                          <div 
+                            key={i} 
+                            className={`h-2 w-3 border border-white ${i < established ? 'bg-white' : 'bg-transparent'}`} 
+                          />
+                        );
+                      })}
+                    </div>
+                    <div className="text-[8px] text-white/70 font-mono tracking-widest uppercase">
+                      {Math.max(0, highlightedPathIds.length - 2) === nSteps[0] 
+                        ? "LINK OPTIMAL" 
+                        : "SIGNAL DEGRADED"}
+                    </div>
+                  </div>
+                )}
+                            </div>
           </div>
         )}
 
         {/* Global Controls - Gravity Slider */}
-        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4">
-          <Label className="text-[10px] tracking-widest uppercase text-white/50">Gravity Modifier (Audio vs Lyrics)</Label>
+        <div className="bg-black border-2 border-white p-6 relative">
+          <div className="absolute top-1 right-2 text-[8px] font-mono text-white/50">+++ SYS.03</div>
+          <Label className="text-[10px] tracking-widest uppercase text-white font-bold mb-4 block" style={{ fontFamily: 'monospace' }}>GRAVITY_MODIFIER [AUDIO:LYRICS]</Label>
           <div className="pt-2">
             <Slider
               min={0}
               max={100}
               step={1}
               value={audioLyricsValue}
-              onValueChange={setAudioLyricsValue}
+              onValueChange={(val) => {
+                setAudioLyricsValue(val);
+                setLiveWeight(val[0] / 100);
+              }}
+              onValueCommit={(val) => setCommittedAudioWeight(val[0] / 100)}
               className="w-full"
             />
           </div>
-          <div className="flex justify-between text-[10px] tracking-widest uppercase text-white/40">
-            <span>Audio Pull</span>
-            <span>Lyrical Pull</span>
+          <div className="flex justify-between text-[10px] tracking-widest uppercase text-white font-mono mt-4">
+            <span>[AUDIO]</span>
+            <span>[LYRIC]</span>
           </div>
         </div>
       </div>
 
       {/* Floating HUD - Bottom Center - Player */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 w-[400px]">
-        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 shadow-2xl">
-          <div className="text-[10px] tracking-widest uppercase text-white/50 mb-3 text-center">NOW TRANSMITTING</div>
+        <div className="bg-black border-2 border-white p-4 relative">
+          <div className="absolute top-1 left-2 text-[8px] font-mono text-white/50">+++ TX.OUT</div>
+          <div className="text-[10px] tracking-widest uppercase text-white font-bold mb-3 text-center cyber-flicker" style={{ fontFamily: 'monospace' }}>
+            NOW_TRANSMITTING <span className="animate-pulse">_</span>
+          </div>
           {currentTrack.videoId ? (
-            <div className="rounded-xl overflow-hidden pointer-events-auto h-[100px]">
-              <iframe
-                width="100%"
-                height="100%"
-                src={`https://www.youtube.com/embed/${currentTrack.videoId}?autoplay=1&controls=1`}
-                title={currentTrack.title}
-                frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              ></iframe>
+            <div className="border-2 border-white pointer-events-auto p-4 flex flex-col gap-4">
+              <div className="flex justify-between items-center pb-3">
+                <div className="flex-1 min-w-0 pr-4">
+                  <div className="font-bold text-xs truncate uppercase text-white font-mono">{currentTrack.title}</div>
+                  <div className="text-[10px] tracking-widest text-white/50 truncate uppercase font-mono mt-1">{currentTrack.artist}</div>
+                </div>
+                <div className="text-[10px] font-mono whitespace-nowrap text-white/80">
+                  {isPlaying ? '[ PLAYING ]' : '[ PAUSED ]'}
+                </div>
+              </div>
+              
+              <div className="h-0.5 bg-white/20 w-full relative -mt-2 mb-1">
+                <div 
+                  ref={progressBarRef}
+                  className="absolute top-0 left-0 h-full bg-white transition-all duration-100 ease-linear"
+                  style={{ width: '0%' }}
+                ></div>
+              </div>
+              
+              <div className="flex justify-between gap-2">
+                <button 
+                  className={`flex-1 py-2 border-2 border-white font-bold tracking-widest text-xs uppercase font-mono transition-colors ${isPlaying ? 'bg-white text-black' : 'bg-black text-white hover:bg-white/10'}`}
+                  onClick={() => {
+                    if (isPlaying) {
+                      player?.pauseVideo();
+                    } else {
+                      player?.playVideo();
+                    }
+                  }}
+                >
+                  {isPlaying ? 'PAUSE' : 'PLAY'}
+                </button>
+              </div>
+
+              {/* Hidden YouTube Player to drive audio */}
+              <div className="hidden">
+                <YouTube
+                  videoId={currentTrack.videoId}
+                  opts={{ width: '0', height: '0', playerVars: { autoplay: 0 } }}
+                  onReady={(e) => setPlayer(e.target)}
+                  onStateChange={(e) => setIsPlaying(e.data === 1)}
+                />
+              </div>
             </div>
           ) : (
-            <div className="h-[100px] flex items-center justify-center bg-black/40 rounded-xl">
-              <span className="text-white/30 text-xs tracking-widest uppercase">No Signal</span>
+            <div className="h-[100px] flex items-center justify-center border-2 border-white border-dashed bg-black">
+              <span className="text-white text-xs tracking-widest uppercase font-mono">NO_SIGNAL_DETECTED</span>
             </div>
           )}
         </div>
       </div>
+      <div className="crt absolute inset-0 z-[100] pointer-events-none"></div>
     </div>
   );
 };
