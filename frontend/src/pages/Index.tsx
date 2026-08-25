@@ -265,6 +265,10 @@ const Index = () => {
         playbackHistory={playbackHistory}
         manualTargetId={manualTargetId}
         inspectedNodeId={inspectedNodeId}
+        onBackgroundClick={() => {
+          setManualTargetId(null);
+          setInspectedNodeId(null);
+        }}
       />
 
       {/* Floating HUD - Top Left - Logo & Tabs */}
@@ -520,6 +524,25 @@ const Index = () => {
                   {isPlaying ? 'PAUSE' : 'PLAY'}
                 </button>
               </div>
+
+              {activeTab === "discover" && (
+                <div className="flex justify-between items-center pt-2 border-t border-white/20">
+                  <div className="text-[8px] tracking-widest text-white/50 uppercase font-mono">
+                    {manualTargetId 
+                      ? "AUTOPILOT: MANUAL OVERRIDE" 
+                      : "AUTOPILOT: SEEKING OPTIMAL MATCH"
+                    }
+                  </div>
+                  {manualTargetId && (
+                    <button 
+                      onClick={() => setManualTargetId(null)}
+                      className="text-[8px] text-red-400 hover:text-red-300 font-mono tracking-widest border border-red-500/30 px-2 py-1 transition-colors"
+                    >
+                      [ CLEAR ]
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Hidden YouTube Player to drive audio */}
               <div className="hidden">

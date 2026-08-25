@@ -14,6 +14,7 @@ interface GraphCanvasProps {
   playbackHistory?: string[];
   manualTargetId?: string | null;
   inspectedNodeId?: string | null;
+  onBackgroundClick?: () => void;
 }
 
 export const GraphCanvas: React.FC<GraphCanvasProps> = ({
@@ -29,6 +30,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   playbackHistory = [],
   manualTargetId = null,
   inspectedNodeId = null,
+  onBackgroundClick,
 }) => {
   const fgRef = useRef<any>();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -546,7 +548,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
         nodeRelSize={1}
         backgroundColor="#000000"
         nodeLabel="" 
-        onBackgroundClick={() => {}}
+        onBackgroundClick={onBackgroundClick}
         onRenderFramePost={(ctx, globalScale) => {
           paintBackground(ctx, globalScale);
           paintBridge(ctx, globalScale);
