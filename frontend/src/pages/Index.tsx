@@ -77,6 +77,15 @@ const Index = () => {
   }, [liveWeight, committedAudioWeight]);
 
   useEffect(() => {
+    if (activeTab === "interpolate" && destTrackId && currentTrack.id && currentTrack.id !== sourceTrackId) {
+      setIsJourneyLocked(true);
+    }
+    if (!destTrackId || activeTab !== "interpolate") {
+      setIsJourneyLocked(false);
+    }
+  }, [activeTab, destTrackId, currentTrack.id, sourceTrackId]);
+
+  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
         setIsDropdownOpen(false);

@@ -229,9 +229,10 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
              node.id === selectedNodeId || 
              node.id === sourceNodeId || 
              node.id === destNodeId || 
+             node.id === manualTargetId ||
              highlightedPathIds.includes(node.id);
     });
-  }, [graphData, hoverNode, selectedNodeId, sourceNodeId, destNodeId, highlightedPathIds, activeDegrees]);
+  }, [graphData, hoverNode, selectedNodeId, sourceNodeId, destNodeId, highlightedPathIds, activeDegrees, manualTargetId]);
 
   const labelsRef = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
@@ -561,6 +562,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
           const isDiscoverMode = highlightedPathIds.length < 2;
           const isActive = 
             (isDiscoverMode && (link.source?.id === selectedNodeId || link.target?.id === selectedNodeId)) ||
+            (manualTargetId && (link.source?.id === manualTargetId || link.target?.id === manualTargetId)) ||
             link.source?.id === hoverNode?.id || link.target?.id === hoverNode?.id;
             
           return isActive ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.05)';
