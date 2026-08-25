@@ -1,6 +1,32 @@
 # wave.fm Architecture & Algorithm Reference
 
-This document serves as a plain-English reference for the wave.fm codebase, explaining how the mathematical space works and why specific algorithms were chosen for each feature.
+This document serves as a plain-English reference for the wave.fm codebase, explaining the architecture, how the mathematical space works, and why specific algorithms were chosen for each feature.
+
+## Project Structure (Master Index)
+
+The project is divided into a React frontend and a FastAPI backend, both communicating via standard REST APIs.
+
+### Backend (`backend/`)
+The backend is a pure functional Python application powered by FastAPI and ChromaDB. It has been modularized into a `core` package for clean separation of concerns.
+
+*   `server.py`: The main entry point. Defines the FastAPI app, CORS middleware, and REST endpoints (`/api/recommend`, `/api/interpolate`, `/api/graph`, `/api/search`). It orchestrates calls to the `core` modules.
+*   `core/db.py`: Singleton manager for the ChromaDB connection. Instantiates the persistent client and exposes the audio and text collections.
+*   `core/utils.py`: Pure helper functions for database querying (`get_single_embedding`, `fetch_embeddings_map`) and mathematical operations (`dot_product`).
+*   `core/recommend.py`: Contains `recommend_similar_tracks`. Implements the **Early Fusion** nearest-neighbor search for the Discover tab.
+*   `core/pathfind.py`: Contains `interpolate_tracks`. Implements the **Geodesic Pathfinding (A*)** algorithm for the Interpolate tab.
+*   `core/graph_data.py`: Contains `generate_graph_data`. Pre-calculates the k-NN layout for the entire universe so the frontend physics engine can render the background map.
+*   `tests/`: Pytest suite verifying the pure mathematical logic in the core modules.
+
+### Frontend (`frontend/`)
+A React application built with Vite, TypeScript, and TailwindCSS.
+
+*   `src/App.tsx`: The main React component wrapping the application.
+*   `src/components/GraphCanvas.tsx`: The heart of the UI. Uses `react-force-graph` to render the 2D universe of songs based on the k-NN springs calculated by the backend.
+*   `src/components/BottomNavigation.tsx`: The main navigation bar allowing users to switch tabs.
+*   `src/components/CurrentTrack.tsx`: UI for displaying the currently selected track and playing audio.
+*   `src/components/RecommendationCard.tsx` / `RecommendationList.tsx`: Displays the grid of similar tracks returned by the backend.
+
+---
 
 ## The Universe (The 1024-D Latent Space)
 Every song in our database is analyzed by AI and converted into a list of 1,024 numbers. You can think of this like GPS coordinates, but instead of just X, Y, and Z (3 dimensions), there are 1,024 dimensions. 
@@ -12,7 +38,7 @@ When the user adjusts the `[AUDIO:LYRICS]` gravity slider, we perform **Early Fu
 ---
 
 ## 1. The Constellation Map (Background UI)
-**File:** `backend/app.py` -> `generate_graph_data`
+**File:** `backend/core/graph_data.py`
 
 **The Algorithm: k-Nearest Neighbor (k-NN) Graph**
 For every single song in the database, the algorithm calculates its distance to every other song using the Hybrid coordinates. It takes the Top 5 closest songs and creates a "spring" (edge) connecting them. 
@@ -23,7 +49,7 @@ We pass these springs to the frontend (`react-force-graph`), which uses a physic
 ---
 
 ## 2. The Discover Tab
-**File:** `backend/app.py` -> `recommend_similar_tracks`
+**File:** `backend/core/recommend.py`
 
 **The Algorithm: Exact Nearest Neighbor Search (Early Fusion)**
 When you select a song, the app mathematically mixes its Audio and Text coordinates based on your slider preference. It then measures the distance from this custom coordinate to every other song in the universe and returns the absolute closest ones.
@@ -34,7 +60,7 @@ Originally, the app used "Late Fusion" (finding the best audio matches, finding 
 ---
 
 ## 3. The Interpolate Tab (The Bridge)
-**File:** `backend/app.py` -> `interpolate_tracks`
+**File:** `backend/core/pathfind.py`
 
 **The Algorithm: Geodesic Pathfinding (A* Search on the k-NN Graph)**
 When you want to travel from a Country song to a Rap song, you need a bridge of intermediate songs that smoothly transition between them.

@@ -15,17 +15,26 @@ def recommend_similar_tracks(
     candidate_n: int = 50,
     top_k: int = 3,
     audio_weight: float = 0.5,
+    history: List[str] = None
 ) -> List[Dict[str, float]]:
     """
     Finds the most similar songs using an "Early Fusion" algorithm.
     Mathematically combines audio and lyric coordinates into a single hybrid 
     coordinate, then finds the closest songs to that hybrid coordinate.
     
+    If 'history' is provided, skips any candidate IDs that exist in the history 
+    array to prevent "Ping-Pong" loops during autoplay.
+    
     Returns a list of dictionaries with keys:
     'id', 'sim_combined', 'sim_audio', 'sim_text'
     """
     if not query_id:
         raise ValueError("query_id must be provided")
+
+    if history is None:
+        history = []
+        
+    history_set = set(history)
 
     query_audio = get_single_embedding(audio_collection, query_id)
     query_text = get_single_embedding(text_collection, query_id)
@@ -56,7 +65,8 @@ def recommend_similar_tracks(
 
     scored = []
     for cid in combined_candidate_ids:
-        if cid == query_id:
+        # Prevent Ping-Pong Effect: Skip if it is the query or already in history
+        if cid == query_id or cid in history_set:
             continue
 
         has_audio = (query_audio_arr is not None) and (cid in audio_embeddings_map)

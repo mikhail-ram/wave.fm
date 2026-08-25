@@ -36,12 +36,17 @@ class RecommendationResponse(BaseModel):
     recommendations: List[TrackRecommendation]
 
 @app.get("/api/recommend", response_model=RecommendationResponse)
-def get_recommendations(query_id: Optional[str] = None, audio_weight: float = 0.5):
+def get_recommendations(query_id: Optional[str] = None, audio_weight: float = 0.5, history: Optional[str] = None):
     """
     API Endpoint: Handles requests from the Discover Tab.
     Takes a song ID and an audio/lyric preference slider value, and returns the most similar songs.
     """
     try:
+        # Parse history string into a list of IDs (comma separated)
+        history_list = []
+        if history:
+            history_list = [h.strip() for h in history.split(",") if h.strip()]
+            
         if not query_id:
             query_id = get_nth_id(audio_collection)
             
@@ -52,6 +57,7 @@ def get_recommendations(query_id: Optional[str] = None, audio_weight: float = 0.
             candidate_n=50,
             top_k=10,
             audio_weight=audio_weight,
+            history=history_list,
         )
         
         all_ids = [item["id"] for item in top_results] + [query_id]
