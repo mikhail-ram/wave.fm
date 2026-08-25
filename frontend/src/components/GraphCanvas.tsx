@@ -1,16 +1,18 @@
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
+import { GraphNode, GraphLink } from '../types';
 
 interface GraphCanvasProps {
-  graphData: { nodes: any[]; links: any[] };
-  audioWeight: number; // 0.0 to 1.0
-  onNodeClick: (node: any) => void;
-  selectedNodeId?: string;
-  sourceNodeId?: string;
-  destNodeId?: string;
+  graphData: { nodes: GraphNode[]; links: GraphLink[] };
+  audioWeight?: number; // 0.0 to 1.0
+  onNodeClick: (node: GraphNode) => void;
+  selectedNodeId?: string | null;
+  sourceNodeId?: string | null;
+  destNodeId?: string | null;
   highlightedPathIds?: string[];
   isInterpolating?: boolean;
   playbackProgressRef?: React.MutableRefObject<number>;
+  ghostNodes?: any[];
   playbackHistory?: string[];
   manualTargetId?: string | null;
   inspectedNodeId?: string | null;

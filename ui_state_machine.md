@@ -132,5 +132,6 @@ The "Packet" is the physical representation of the audio currently streaming. It
 *   **The Arrowhead:** A sharp, solid geometric arrowhead drawn exactly at the tip of the Progress Fill. It emits a subtle 6px glow. It vanishes the millisecond `progress === 1.0` to prevent clipping the target node's border.
 *   **Interpolate Override (State 2B - Preview):** The Playback Packet strictly represents the live audio engine. If you are playing Song A, but planning a route from Song B to Song C:
     *   The bridge from B to C will **not** have an arrow on it, because no audio is traversing it yet.
-    *   The live arrow will still emerge from Song A (wherever it is on the map). However, because Song A is not part of the planned route, both Song A and its live arrow will be heavily dimmed (`0.15` opacity) to keep visual focus on your planned bridge.
+    *   The live arrow will still emerge from Song A (wherever it is on the map). However, because the system is in PREVIEW mode, the live arrow and crosshair will be visually suppressed to `0.4` opacity (with a dimmed shadow) to keep visual focus on your planned bridge, even if the arrow points to a manual override.
+    *   *Further Improvement:* The dimming logic could be refined to handle edge cases where the predicted target perfectly overlaps with the bridge but is not yet locked.
     *   Only when you click `[ INITIATE ]` does the audio engine teleport to Song B, at which point the bright, solid arrow snaps to the bridge and begins traversing it.
