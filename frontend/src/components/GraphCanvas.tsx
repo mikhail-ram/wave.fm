@@ -599,18 +599,34 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
         onNodeHover={(node) => setHoverNode(node)}
         onNodeClick={(node) => {
           onNodeClick(node);
-          fgRef.current.centerAt(node.x, node.y, 1000);
+          if (node.id !== selectedNodeId && selectedNodeId && highlightedPathIds.length < 2) {
+            // In Discover mode, if you click a different node, zoom to fit BOTH current and clicked node
+            fgRef.current.zoomToFit(1000, 100, (n: any) => n.id === selectedNodeId || n.id === node.id);
+          } else {
+            fgRef.current.centerAt(node.x, node.y, 1000);
+          }
         }}
         d3VelocityDecay={0.3}
         cooldownTicks={100}
         onEngineStop={() => {
           if (needsRecenteringRef.current && fgRef.current) {
             needsRecenteringRef.current = false;
-            // Always favor inspected/targeted node, otherwise fallback to currently playing node
-            const targetNodeId = inspectedNodeId || manualTargetId || selectedNodeId;
-            const targetNode = graphData.nodes.find((n: any) => n.id === targetNodeId);
-            if (targetNode && typeof targetNode.x === 'number' && typeof targetNode.y === 'number') {
-              fgRef.current.centerAt(targetNode.x, targetNode.y, 1000);
+            
+            const targetId = inspectedNodeId || manualTargetId;
+            const isDiscoverMode = highlightedPathIds.length < 2;
+            
+            if (!isDiscoverMode && highlightedPathIds.length > 1) {
+               // In Interpolate mode, always re-frame the entire path after physics settle
+               fgRef.current.zoomToFit(1000, 100, (n: any) => highlightedPathIds.includes(n.id));
+            } else if (isDiscoverMode && targetId && targetId !== selectedNodeId) {
+               // Zoom to fit BOTH active song and target song after physics settle
+               fgRef.current.zoomToFit(1000, 100, (n: any) => n.id === selectedNodeId || n.id === targetId);
+            } else if (selectedNodeId) {
+               // No secondary target? Just center on active song.
+               const activeNode = graphData.nodes.find((n: any) => n.id === selectedNodeId);
+               if (activeNode && typeof activeNode.x === 'number' && typeof activeNode.y === 'number') {
+                 fgRef.current.centerAt(activeNode.x, activeNode.y, 1000);
+               }
             }
           }
         }}
