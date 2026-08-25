@@ -531,6 +531,19 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     }
   }, [selectedNodeId, highlightedPathIds, graphData, playbackProgressRef, getNodeSize, playbackHistory]);
 
+  // Cinematic Framing: Zoom to fit the Interpolation path when it's drawn
+  useEffect(() => {
+    if (highlightedPathIds.length > 1 && fgRef.current) {
+      fgRef.current.zoomToFit(1000, 100, (node: any) => highlightedPathIds.includes(node.id));
+    }
+  }, [highlightedPathIds]);
+
+  // Universe Settling: Recenter camera after physics stabilize from a slider tweak
+  const needsRecenteringRef = useRef(false);
+  useEffect(() => {
+    needsRecenteringRef.current = true;
+  }, [graphData]);
+
   return (
     <div className="absolute inset-0 z-0 bg-black overflow-hidden pointer-events-auto custom-graph-cursor" ref={containerRef}>
       <div ref={crosshairRef} className="hud-target-wrapper">
@@ -584,10 +597,19 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
         onNodeClick={(node) => {
           onNodeClick(node);
           fgRef.current.centerAt(node.x, node.y, 1000);
-          fgRef.current.zoom(3, 1000);
         }}
         d3VelocityDecay={0.3}
         cooldownTicks={100}
+        onEngineStop={() => {
+          if (needsRecenteringRef.current && fgRef.current) {
+            needsRecenteringRef.current = false;
+            const targetNodeId = manualTargetId || selectedNodeId;
+            const targetNode = graphData.nodes.find((n: any) => n.id === targetNodeId);
+            if (targetNode && typeof targetNode.x === 'number' && typeof targetNode.y === 'number') {
+              fgRef.current.centerAt(targetNode.x, targetNode.y, 1000);
+            }
+          }
+        }}
       />
       {labelsToDraw.map(node => (
         <HackerLabel 
