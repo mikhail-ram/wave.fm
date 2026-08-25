@@ -561,7 +561,10 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
         nodeRelSize={1}
         backgroundColor="#000000"
         nodeLabel="" 
-        onBackgroundClick={onBackgroundClick}
+        onBackgroundClick={() => {
+          needsRecenteringRef.current = false;
+          if (onBackgroundClick) onBackgroundClick();
+        }}
         onRenderFramePost={(ctx, globalScale) => {
           paintBackground(ctx, globalScale);
           paintBridge(ctx, globalScale);
@@ -595,6 +598,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
         linkDirectionalParticleWidth={0}
         onNodeHover={(node) => setHoverNode(node)}
         onNodeClick={(node) => {
+          needsRecenteringRef.current = false;
           onNodeClick(node);
           fgRef.current.centerAt(node.x, node.y, 1000);
         }}
@@ -603,7 +607,8 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
         onEngineStop={() => {
           if (needsRecenteringRef.current && fgRef.current) {
             needsRecenteringRef.current = false;
-            const targetNodeId = manualTargetId || selectedNodeId;
+            // Always favor inspected/targeted node, otherwise fallback to currently playing node
+            const targetNodeId = inspectedNodeId || manualTargetId || selectedNodeId;
             const targetNode = graphData.nodes.find((n: any) => n.id === targetNodeId);
             if (targetNode && typeof targetNode.x === 'number' && typeof targetNode.y === 'number') {
               fgRef.current.centerAt(targetNode.x, targetNode.y, 1000);
