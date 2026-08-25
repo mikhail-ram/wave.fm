@@ -110,4 +110,120 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
     font-family: var(--retro-font);
   }
+
+  /* Force crosshair strictly on the physics canvas, overriding internal grab/pointer styles */
+  .custom-graph-cursor canvas {
+    cursor: crosshair !important;
+  }
+}
+
+/* CRT Scanline Effect */
+.crt::before {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+  z-index: 2;
+  background-size: 100% 4px, 3px 100%;
+  pointer-events: none;
+  /* Removed fine-grain animation to stop moire flicker */
+}
+
+.crt::after {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 15vh;
+  background: linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0) 100%);
+  z-index: 2;
+  pointer-events: none;
+  animation: roll 8s linear infinite;
+}
+
+@keyframes roll {
+  0% { transform: translateY(-15vh); }
+  100% { transform: translateY(115vh); }
+}
+
+/* Cyber-Brutalist Text Flicker */
+@keyframes text-flicker {
+  0% { opacity: 1; }
+  2% { opacity: 0.4; }
+  4% { opacity: 1; }
+  19% { opacity: 1; }
+  21% { opacity: 0.1; }
+  23% { opacity: 1; }
+  80% { opacity: 1; }
+  83% { opacity: 0.4; }
+  87% { opacity: 1; }
+  100% { opacity: 1; }
+}
+
+.cyber-flicker {
+  animation: text-flicker 7s infinite;
+}
+
+/* Cyber-Brutalist HUD Crosshair */
+@keyframes hud-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.6; }
+}
+
+.hud-target-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 20;
+  display: none;
+}
+
+.hud-crosshair-brackets {
+  position: absolute;
+  animation: hud-pulse 3s infinite cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hud-crosshair-brackets::before,
+.hud-crosshair-brackets::after {
+  content: "";
+  position: absolute;
+  width: 10px; height: 10px;
+  border: 1px solid white;
+}
+
+.hud-crosshair-brackets::before {
+  top: 0; left: 0;
+  border-right: none; border-bottom: none;
+}
+.hud-crosshair-brackets::after {
+  bottom: 0; right: 0;
+  border-left: none; border-top: none;
+}
+
+/* We need 2 more corners, so we'll use a child div */
+.hud-crosshair-brackets-inner {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+}
+.hud-crosshair-brackets-inner::before,
+.hud-crosshair-brackets-inner::after {
+  content: "";
+  position: absolute;
+  width: 10px; height: 10px;
+  border: 1px solid white;
+}
+.hud-crosshair-brackets-inner::before {
+  top: 0; right: 0;
+  border-left: none; border-bottom: none;
+}
+.hud-crosshair-brackets-inner::after {
+  bottom: 0; left: 0;
+  border-right: none; border-top: none;
 }
