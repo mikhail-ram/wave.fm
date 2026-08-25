@@ -77,3 +77,18 @@ By forcing the algorithm to only take steps along existing physical connections,
 2.  **Visual Perfection:** Because it strictly uses the exact same edges drawn by the user interface, it is geometrically impossible for the bridge line to cross itself, tangle, or look messy. It flawlessly traces the glowing web of the constellation. 
 
 If the shortest path through the web only requires 4 steps, but the user asked for 10 on the slider, the backend mathematically returns the optimal 4 steps, and the frontend elegantly displays a `SIGNAL DEGRADED` warning to inform the user.
+
+## 5. User Interaction Architecture (The State Machine)
+
+Apple's design philosophy of "Progressive Disclosure of Intent" drives the UI interaction within the spatial canvas.
+
+### The Input Paradigm
+- **Hover:** "Peek". Highlights a node and reveals its metadata tooltip without any state commitment.
+- **Single-Click:** "Target / Queue". A low-commitment action. In Discover mode, it manually moves the crosshair to the clicked node (overriding the algorithmic closest-neighbor) without interrupting the currently playing song. In Interpolate mode, it safely inspects a node without destroying the active bridge.
+- **Double-Click:** "Execute / Jump". A high-commitment action. Instantly interrupts playback and teleports the ship to the clicked node. If the node is off-path during an Interpolate journey, a double-click acts as an emergency "Eject", shattering the route, dropping the destination, and kicking the user back into Discover mode.
+
+### The "Reverse / Parked" Edge Case
+If a user is actively on a bridge (e.g., node B of A -> B -> C) and double-clicks the original source node (A), the system recognizes the user has "reversed" back to the starting line. Because they are parked at the origin, `isJourneyActive` evaluates to false, and the navigation sliders unlock, allowing them to recalibrate the route before setting off again.
+
+### UI Automation Testing
+Testing `<canvas>` nodes via E2E frameworks (like Cypress) is virtually impossible via DOM queries. Therefore, the UI state machine edge cases are fully documented and intended for headless React Hook testing (e.g., via Vitest). See `UI_STATE_MACHINE_TESTS.md` for the comprehensive edge-case matrix mapping all possible user interactions.

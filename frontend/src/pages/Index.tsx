@@ -59,6 +59,9 @@ const Index = () => {
   const [nSteps, setNSteps] = useState([10]);
   const [highlightedPathIds, setHighlightedPathIds] = useState<string[]>([]);
   const [ghostNodes, setGhostNodes] = useState<any[]>([]);
+  const [manualTargetId, setManualTargetId] = useState<string | null>(null);
+  const [isJourneyLocked, setIsJourneyLocked] = useState<boolean>(false);
+  const clickTimerRef = useRef<{time: number, id: string | null}>({time: 0, id: null});
 
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const [liveWeight, setLiveWeight] = useState(0.5);
