@@ -223,12 +223,6 @@ const Index = () => {
     }
   };
 
-  const isJourneyActive = activeTab === "interpolate" && 
-                          sourceTrackId && 
-                          destTrackId && 
-                          currentTrack.id !== sourceTrackId && 
-                          currentTrack.id !== destTrackId;
-                          
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-black font-sans text-white">
       {/* 3D Physics Graph Canvas */}
@@ -311,7 +305,7 @@ const Index = () => {
                     </button>
                   )}
                 </div>
-                {isJourneyActive && (
+                {isJourneyLocked && (
                   <div className="mt-3">
                     <button 
                       onClick={() => {
@@ -348,12 +342,12 @@ const Index = () => {
               </div>
               
               <div className="pt-2 border-t-2 border-white/20 relative">
-                {isJourneyActive && (
+                {isJourneyLocked && (
                   <div className="absolute inset-0 z-10 bg-black/80 backdrop-blur-sm flex items-center justify-center border border-white/20">
                     <span className="text-[10px] font-mono tracking-widest uppercase text-white animate-pulse">[ LOCKED_IN_TRANSIT ]</span>
                   </div>
                 )}
-                <div className={`transition-opacity duration-300 ${isJourneyActive ? 'opacity-30' : 'opacity-100'}`}>
+                <div className={`transition-opacity duration-300 ${isJourneyLocked ? 'opacity-30' : 'opacity-100'}`}>
                   <div className="flex justify-between mb-4">
                     <Label className="text-[10px] tracking-widest uppercase text-white font-bold" style={{ fontFamily: 'monospace' }}>BRIDGE_DISTANCE</Label>
                     <span className="text-[10px] text-white font-mono">[{nSteps[0]}_LY]</span>
@@ -363,9 +357,9 @@ const Index = () => {
                     max={10}
                     step={1}
                     value={nSteps}
-                    onValueChange={(val) => { if (!isJourneyActive) setNSteps(val); }}
-                    className={`w-full ${isJourneyActive ? 'pointer-events-none' : ''}`}
-                    disabled={isJourneyActive}
+                    onValueChange={(val) => { if (!isJourneyLocked) setNSteps(val); }}
+                    className={`w-full ${isJourneyLocked ? 'pointer-events-none' : ''}`}
+                    disabled={isJourneyLocked}
                   />
                 </div>
               </div>
@@ -396,13 +390,13 @@ const Index = () => {
 
         {/* Global Controls - Gravity Slider */}
         <div className="bg-black border-2 border-white p-6 relative overflow-hidden">
-          {isJourneyActive && (
+          {isJourneyLocked && (
             <div className="absolute inset-0 z-10 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center">
               <span className="text-[10px] font-mono tracking-widest uppercase text-white animate-pulse mb-1">[ LATENT_SPACE_LOCKED ]</span>
               <span className="text-[8px] font-mono tracking-widest uppercase text-white/50 text-center">FINISH OR ABORT EXPEDITION<br/>TO UNLOCK</span>
             </div>
           )}
-          <div className={`transition-opacity duration-300 ${isJourneyActive ? 'opacity-30' : 'opacity-100'}`}>
+          <div className={`transition-opacity duration-300 ${isJourneyLocked ? 'opacity-30' : 'opacity-100'}`}>
             <div className="absolute top-1 right-2 text-[8px] font-mono text-white/50">+++ SYS.03</div>
             <Label className="text-[10px] tracking-widest uppercase text-white font-bold mb-4 block" style={{ fontFamily: 'monospace' }}>GRAVITY_MODIFIER [AUDIO:LYRICS]</Label>
             <div className="pt-2">
@@ -412,16 +406,16 @@ const Index = () => {
                 step={1}
                 value={audioLyricsValue}
                 onValueChange={(val) => {
-                  if (!isJourneyActive) {
+                  if (!isJourneyLocked) {
                     setAudioLyricsValue(val);
                     setLiveWeight(val[0] / 100);
                   }
                 }}
                 onValueCommit={(val) => {
-                  if (!isJourneyActive) setCommittedAudioWeight(val[0] / 100);
+                  if (!isJourneyLocked) setCommittedAudioWeight(val[0] / 100);
                 }}
-                className={`w-full ${isJourneyActive ? 'pointer-events-none' : ''}`}
-                disabled={isJourneyActive}
+                className={`w-full ${isJourneyLocked ? 'pointer-events-none' : ''}`}
+                disabled={isJourneyLocked}
               />
             </div>
             <div className="flex justify-between text-[10px] tracking-widest uppercase text-white font-mono mt-4">
