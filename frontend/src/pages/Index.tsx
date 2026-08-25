@@ -136,6 +136,9 @@ const Index = () => {
         }
       };
       fetchInterpolation();
+    } else if (activeTab === "interpolate" && !destTrackId) {
+      // Cleanup the path if destination is cleared (e.g. user aborted)
+      setHighlightedPathIds([]);
     }
   }, [activeTab, sourceTrackId, destTrackId, nSteps, committedAudioWeight]);
 
@@ -198,6 +201,7 @@ const Index = () => {
           setDestTrackId("");
           setSearchQuery("");
           setSourceTrackId(node.id);
+          setHighlightedPathIds([]);
         }
         // If on-path, currentTrack updates and journey logic handles the rest naturally.
       }
@@ -283,6 +287,7 @@ const Index = () => {
                       onClick={() => {
                         setDestTrackId("");
                         setSearchQuery("");
+                        setHighlightedPathIds([]);
                       }}
                       className="absolute right-2 top-1/2 transform -translate-y-1/2 text-white/50 hover:text-white transition-colors"
                       title="Abort Expedition"
@@ -297,6 +302,7 @@ const Index = () => {
                       onClick={() => {
                         setDestTrackId("");
                         setSearchQuery("");
+                        setHighlightedPathIds([]);
                       }}
                       className="w-full bg-transparent border-2 border-dashed border-red-500/50 text-red-500/80 hover:bg-red-500/10 hover:border-red-500 hover:text-red-500 text-[10px] font-mono tracking-widest uppercase py-2 transition-all"
                     >
