@@ -13,6 +13,7 @@ interface GraphCanvasProps {
   playbackProgressRef?: React.MutableRefObject<number>;
   playbackHistory?: string[];
   manualTargetId?: string | null;
+  inspectedNodeId?: string | null;
 }
 
 export const GraphCanvas: React.FC<GraphCanvasProps> = ({
@@ -27,6 +28,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   playbackProgressRef,
   playbackHistory = [],
   manualTargetId = null,
+  inspectedNodeId = null,
 }) => {
   const fgRef = useRef<any>();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -230,9 +232,10 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
              node.id === sourceNodeId || 
              node.id === destNodeId || 
              node.id === manualTargetId ||
+             node.id === inspectedNodeId ||
              highlightedPathIds.includes(node.id);
     });
-  }, [graphData, hoverNode, selectedNodeId, sourceNodeId, destNodeId, highlightedPathIds, activeDegrees, manualTargetId]);
+  }, [graphData, hoverNode, selectedNodeId, sourceNodeId, destNodeId, highlightedPathIds, activeDegrees, manualTargetId, inspectedNodeId]);
 
   const labelsRef = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
@@ -563,6 +566,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
           const isActive = 
             (isDiscoverMode && (link.source?.id === selectedNodeId || link.target?.id === selectedNodeId)) ||
             (manualTargetId && (link.source?.id === manualTargetId || link.target?.id === manualTargetId)) ||
+            (inspectedNodeId && (link.source?.id === inspectedNodeId || link.target?.id === inspectedNodeId)) ||
             link.source?.id === hoverNode?.id || link.target?.id === hoverNode?.id;
             
           return isActive ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.05)';

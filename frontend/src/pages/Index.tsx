@@ -60,11 +60,13 @@ const Index = () => {
   const [highlightedPathIds, setHighlightedPathIds] = useState<string[]>([]);
   const [ghostNodes, setGhostNodes] = useState<any[]>([]);
   const [manualTargetId, setManualTargetId] = useState<string | null>(null);
+  const [inspectedNodeId, setInspectedNodeId] = useState<string | null>(null);
+  const [journeyState, setJourneyState] = useState<"IDLE" | "PREVIEW" | "LOCKED">("IDLE");
   const clickTimerRef = useRef<{time: number, id: string | null}>({time: 0, id: null});
-  const isJourneyLocked = activeTab === "interpolate" && destTrackId !== "";
 
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const [liveWeight, setLiveWeight] = useState(0.5);
+  const isJourneyLocked = journeyState === "LOCKED";
 
   // Debounce the live slider value to avoid flooding the backend
   useEffect(() => {
@@ -173,6 +175,7 @@ const Index = () => {
 
   const executeJump = (node: any) => {
     setManualTargetId(null);
+    setInspectedNodeId(null);
     setAutoPlayNext(true);
     setPlaybackHistory(prev => {
       if (!prev.includes(node.id)) return [...prev, node.id];
@@ -201,7 +204,10 @@ const Index = () => {
           setSearchQuery("");
           setSourceTrackId(node.id);
           setHighlightedPathIds([]);
+          setJourneyState("IDLE");
           setActiveTab("discover"); // Kick to discover mode after ejecting
+        } else {
+          setJourneyState("LOCKED");
         }
       }
     }
@@ -218,12 +224,27 @@ const Index = () => {
     } else {
       // It's a single click! Inspect / Target
       clickTimerRef.current = { time: now, id: node.id };
+      
+      const isNeighbor = graphData.links.some((l: any) => {
+        const sid = l.source?.id || l.source;
+        const tid = l.target?.id || l.target;
+        return (sid === currentTrack.id && tid === node.id) || (tid === currentTrack.id && sid === node.id);
+      });
+
       if (activeTab === "discover") {
-        setManualTargetId(node.id);
+        setInspectedNodeId(node.id);
+        if (isNeighbor) {
+          setManualTargetId(node.id);
+        } else {
+          setManualTargetId(null);
+        }
       } else if (activeTab === "interpolate") {
-        // Just inspect. We do not destroy the bridge on a single tap.
-        // The node highlights natively on hover, so a single tap is non-destructive.
-        // We can optionally set it as manualTargetId if we want custom UI, but for now it's just non-destructive.
+        setInspectedNodeId(node.id);
+        if (journeyState !== "LOCKED") {
+          setDestTrackId(node.id);
+          setSearchQuery(`${node.title?.toUpperCase() || 'UNKNOWN'} // ${node.artist?.toUpperCase() || 'UNKNOWN'}`);
+          setJourneyState("PREVIEW");
+        }
       }
     }
   };
@@ -243,6 +264,7 @@ const Index = () => {
         ghostNodes={ghostNodes}
         playbackHistory={playbackHistory}
         manualTargetId={manualTargetId}
+        inspectedNodeId={inspectedNodeId}
       />
 
       {/* Floating HUD - Top Left - Logo & Tabs */}
@@ -267,6 +289,7 @@ const Index = () => {
               onClick={() => {
                 setActiveTab('interpolate');
                 setSourceTrackId(currentTrack.id);
+                if (!destTrackId) setJourneyState("IDLE");
               }}
               style={{ fontFamily: 'monospace' }}
             >
@@ -303,6 +326,7 @@ const Index = () => {
                         setDestTrackId("");
                         setSearchQuery("");
                         setHighlightedPathIds([]);
+                        setJourneyState("IDLE");
                       }}
                       className="absolute right-2 top-1/2 transform -translate-y-1/2 text-white/50 hover:text-white transition-colors"
                       title="Abort Expedition"
@@ -311,15 +335,38 @@ const Index = () => {
                     </button>
                   )}
                 </div>
-                {isJourneyLocked && (
+                {journeyState === "PREVIEW" && (
+                  <div className="mt-3 flex gap-2">
+                    <button 
+                      onClick={() => setJourneyState("LOCKED")}
+                      className="flex-1 bg-white border-2 border-white text-black hover:bg-transparent hover:text-white text-[10px] font-bold font-mono tracking-widest uppercase py-2 transition-all"
+                    >
+                      [ INITIATE_EXPEDITION ]
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setDestTrackId("");
+                        setSearchQuery("");
+                        setHighlightedPathIds([]);
+                        setJourneyState("IDLE");
+                      }}
+                      className="w-10 bg-transparent border-2 border-dashed border-red-500/50 text-red-500/80 hover:bg-red-500/10 hover:border-red-500 hover:text-red-500 flex items-center justify-center transition-all"
+                      title="Clear"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                  </div>
+                )}
+                {journeyState === "LOCKED" && (
                   <div className="mt-3">
                     <button 
                       onClick={() => {
                         setDestTrackId("");
                         setSearchQuery("");
                         setHighlightedPathIds([]);
+                        setJourneyState("IDLE");
                       }}
-                      className="w-full bg-transparent border-2 border-dashed border-red-500/50 text-red-500/80 hover:bg-red-500/10 hover:border-red-500 hover:text-red-500 text-[10px] font-mono tracking-widest uppercase py-2 transition-all"
+                      className="w-full bg-transparent border-2 border-dashed border-red-500/50 text-red-500/80 hover:bg-red-500/10 hover:border-red-500 hover:text-red-500 text-[10px] font-bold font-mono tracking-widest uppercase py-2 transition-all"
                     >
                       [ ABORT_EXPEDITION ]
                     </button>
