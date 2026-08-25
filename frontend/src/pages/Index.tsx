@@ -21,6 +21,7 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [player, setPlayer] = useState<any | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [autoPlayNext, setAutoPlayNext] = useState(false);
   const [playbackHistory, setPlaybackHistory] = useState<string[]>([]);
   const playbackProgressRef = useRef(0);
   const progressBarRef = useRef<HTMLDivElement>(null);
@@ -163,6 +164,7 @@ const Index = () => {
   }, [searchQuery]);
 
   const handleNodeClick = (node: any) => {
+    setAutoPlayNext(true);
     setPlaybackHistory(prev => {
       if (!prev.includes(node.id)) {
         return [...prev, node.id];
@@ -384,11 +386,12 @@ const Index = () => {
               <div className="hidden">
                 <YouTube
                   videoId={currentTrack.videoId}
-                  opts={{ width: '0', height: '0', playerVars: { autoplay: 0 } }}
+                  opts={{ width: '0', height: '0', playerVars: { autoplay: autoPlayNext ? 1 : 0 } }}
                   onReady={(e) => setPlayer(e.target)}
                   onStateChange={(e) => {
                     setIsPlaying(e.data === 1);
                     if (e.data === 0) { // ENDED
+                      setAutoPlayNext(true);
                       // Auto-play next logic
                       if (activeTab === "discover" && graphData.links.length > 0) {
                         const currentId = currentTrack.id;
@@ -409,10 +412,6 @@ const Index = () => {
                           const targetNode = graphData.nodes.find((n: any) => n.id === targetId);
                           if (targetNode) {
                             handleNodeClick(targetNode);
-                            setTimeout(() => {
-                                // Wait for react to re-render, then play
-                                player?.playVideo();
-                            }, 500);
                           }
                         }
                       } else if (activeTab === "interpolate") {
@@ -423,7 +422,6 @@ const Index = () => {
                            const targetNode = graphData.nodes.find((n: any) => n.id === targetId) || ghostNodes.find(n => n.id === targetId);
                            if (targetNode) {
                              handleNodeClick(targetNode);
-                             setTimeout(() => { player?.playVideo(); }, 500);
                            }
                          }
                       }

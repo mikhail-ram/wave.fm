@@ -179,8 +179,12 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
       // Find the target to lock onto
       let computedTargetId = destNodeId;
       if (!computedTargetId && selectedNodeId) {
-        // In Discover mode, lock onto the most similar neighbor (which is the first link in the live graphData payload)
-        const edge = graphData.links.find((l: any) => (l.source?.id || l.source) === selectedNodeId);
+        // In Discover mode, lock onto the most similar neighbor, respecting history
+        const edges = graphData.links.filter((l: any) => (l.source?.id || l.source) === selectedNodeId);
+        const edge = edges.find((l: any) => {
+          const tid = typeof l.target === 'object' ? l.target.id : l.target;
+          return !playbackHistory.includes(tid);
+        }) || edges[0];
         if (edge) {
           computedTargetId = typeof edge.target === 'object' ? edge.target.id : edge.target;
         }
