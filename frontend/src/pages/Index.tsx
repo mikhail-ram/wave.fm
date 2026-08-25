@@ -60,8 +60,8 @@ const Index = () => {
   const [highlightedPathIds, setHighlightedPathIds] = useState<string[]>([]);
   const [ghostNodes, setGhostNodes] = useState<any[]>([]);
   const [manualTargetId, setManualTargetId] = useState<string | null>(null);
-  const [isJourneyLocked, setIsJourneyLocked] = useState<boolean>(false);
   const clickTimerRef = useRef<{time: number, id: string | null}>({time: 0, id: null});
+  const isJourneyLocked = activeTab === "interpolate" && destTrackId !== "";
 
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const [liveWeight, setLiveWeight] = useState(0.5);
@@ -76,14 +76,7 @@ const Index = () => {
     return () => clearTimeout(handler);
   }, [liveWeight, committedAudioWeight]);
 
-  useEffect(() => {
-    if (activeTab === "interpolate" && destTrackId && currentTrack.id && currentTrack.id !== sourceTrackId) {
-      setIsJourneyLocked(true);
-    }
-    if (!destTrackId || activeTab !== "interpolate") {
-      setIsJourneyLocked(false);
-    }
-  }, [activeTab, destTrackId, currentTrack.id, sourceTrackId]);
+
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -249,6 +242,7 @@ const Index = () => {
         playbackProgressRef={playbackProgressRef}
         ghostNodes={ghostNodes}
         playbackHistory={playbackHistory}
+        manualTargetId={manualTargetId}
       />
 
       {/* Floating HUD - Top Left - Logo & Tabs */}

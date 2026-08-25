@@ -65,8 +65,5 @@ export function reduceExpeditionState(state: ExpeditionState, action: Action): E
 }
 
 export function isJourneyLocked(state: ExpeditionState): boolean {
-  return state.activeTab === "interpolate" && 
-         state.destTrackId !== "" && 
-         state.currentTrackId !== "" && 
-         state.currentTrackId !== state.sourceTrackId;
+  return state.activeTab === "interpolate" && state.destTrackId !== "";
 }

@@ -43,12 +43,11 @@ describe('Wave.fm Expedition State Machine', () => {
       currentTrackId: "A"
     });
 
-    it('Should lock sliders when stepping off the source node', () => {
-      expect(isJourneyLocked(activeRouteState)).toBe(false); // At source, unlocked
+    it('Should lock sliders immediately when a route is plotted', () => {
+      expect(isJourneyLocked(activeRouteState)).toBe(true); // Locked immediately upon setting destTrackId
       
       const inTransit = reduceExpeditionState(activeRouteState, { type: 'DOUBLE_CLICK', nodeId: 'B' });
-      expect(inTransit.currentTrackId).toBe('B');
-      expect(isJourneyLocked(inTransit)).toBe(true); // Left source, locked!
+      expect(isJourneyLocked(inTransit)).toBe(true); // Still locked
     });
 
     it('Should NOT unlock sliders if jumping backwards to a mid-path node', () => {
@@ -60,12 +59,12 @@ describe('Wave.fm Expedition State Machine', () => {
       expect(isJourneyLocked(reversed)).toBe(true); // Still on journey!
     });
 
-    it('Should unlock sliders if reversing ALL the way back to source (Parked Edge Case)', () => {
+    it('Should NOT unlock sliders if reversing ALL the way back to source (User feedback)', () => {
       const inTransit = reduceExpeditionState(activeRouteState, { type: 'DOUBLE_CLICK', nodeId: 'B' });
       const parked = reduceExpeditionState(inTransit, { type: 'DOUBLE_CLICK', nodeId: 'A' });
       
       expect(parked.currentTrackId).toBe('A');
-      expect(isJourneyLocked(parked)).toBe(false); // Unlocked because current === source
+      expect(isJourneyLocked(parked)).toBe(true); // STILL Locked!
     });
 
     it('Double clicking OFF-PATH ejects to discover mode and destroys bridge', () => {
