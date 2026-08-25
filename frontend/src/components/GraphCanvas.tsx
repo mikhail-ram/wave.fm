@@ -176,17 +176,27 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
 
     // Sync CSS HUD Target Position
     if (crosshairRef.current && fgRef.current) {
-      // Find the target to lock onto
-      let computedTargetId = destNodeId;
-      if (!computedTargetId && selectedNodeId) {
-        // In Discover mode, lock onto the most similar neighbor, respecting history
-        const edges = graphData.links.filter((l: any) => (l.source?.id || l.source) === selectedNodeId);
-        const edge = edges.find((l: any) => {
-          const tid = typeof l.target === 'object' ? l.target.id : l.target;
-          return !playbackHistory.includes(tid);
-        }) || edges[0];
-        if (edge) {
-          computedTargetId = typeof edge.target === 'object' ? edge.target.id : edge.target;
+      // Find the target to lock onto (Always the IMMEDIATE next step)
+      let computedTargetId = null;
+      if (selectedNodeId) {
+        if (highlightedPathIds.length >= 2) {
+          // In Interpolate mode, lock onto the next step in the bridge
+          const idx = highlightedPathIds.indexOf(selectedNodeId);
+          if (idx !== -1 && idx < highlightedPathIds.length - 1) {
+            computedTargetId = highlightedPathIds[idx + 1];
+          } else if (destNodeId) {
+            computedTargetId = destNodeId;
+          }
+        } else {
+          // In Discover mode, lock onto the most similar neighbor, respecting history
+          const edges = graphData.links.filter((l: any) => (l.source?.id || l.source) === selectedNodeId);
+          const edge = edges.find((l: any) => {
+            const tid = typeof l.target === 'object' ? l.target.id : l.target;
+            return !playbackHistory.includes(tid);
+          }) || edges[0];
+          if (edge) {
+            computedTargetId = typeof edge.target === 'object' ? edge.target.id : edge.target;
+          }
         }
       }
 
@@ -292,12 +302,43 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     ctx.fill();
     ctx.stroke();
     
-    // If it's a key node, fill it and glow
-    if (isSelected || isSource || isDest) {
+    // If it's a key node (active or source), fill it and glow
+    if (isSelected || (isSource && !hasInterpolation)) {
       ctx.fillStyle = color;
       ctx.fill();
       ctx.shadowBlur = 10;
       ctx.shadowColor = color;
+      ctx.stroke();
+    }
+    
+    // For the destination node, do not fill it (so it looks unexplored), 
+    // but give it a thicker border and a glow to stand out as a target
+    if (isDest) {
+      ctx.lineWidth = 3.0 / globalScale;
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = color;
+      ctx.stroke();
+      
+      // Draw target brackets around destination
+      const gap = size * 1.5;
+      const bSize = size * 0.5;
+      ctx.beginPath();
+      // Top left
+      ctx.moveTo(node.x - gap, node.y - gap + bSize);
+      ctx.lineTo(node.x - gap, node.y - gap);
+      ctx.lineTo(node.x - gap + bSize, node.y - gap);
+      // Top right
+      ctx.moveTo(node.x + gap - bSize, node.y - gap);
+      ctx.lineTo(node.x + gap, node.y - gap);
+      ctx.lineTo(node.x + gap, node.y - gap + bSize);
+      // Bottom left
+      ctx.moveTo(node.x - gap, node.y + gap - bSize);
+      ctx.lineTo(node.x - gap, node.y + gap);
+      ctx.lineTo(node.x - gap + bSize, node.y + gap);
+      // Bottom right
+      ctx.moveTo(node.x + gap - bSize, node.y + gap);
+      ctx.lineTo(node.x + gap, node.y + gap);
+      ctx.lineTo(node.x + gap, node.y + gap - bSize);
       ctx.stroke();
     }
     
