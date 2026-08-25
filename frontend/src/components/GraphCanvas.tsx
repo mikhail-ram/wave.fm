@@ -178,7 +178,9 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     if (crosshairRef.current && fgRef.current) {
       // Find the target to lock onto (Always the IMMEDIATE next step)
       let computedTargetId = null;
-      if (selectedNodeId) {
+      if (manualTargetId) {
+        computedTargetId = manualTargetId;
+      } else if (selectedNodeId) {
         if (highlightedPathIds.length >= 2) {
           // In Interpolate mode, lock onto the next step in the bridge
           const idx = highlightedPathIds.indexOf(selectedNodeId);
@@ -211,7 +213,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
         crosshairRef.current.style.display = 'none';
       }
     }
-  }, [internalGraphData.nodes, destNodeId, dimensions, selectedNodeId, graphData]);
+  }, [internalGraphData.nodes, destNodeId, dimensions, selectedNodeId, graphData, manualTargetId]);
 
 
   const labelsToDraw = useMemo(() => {
@@ -377,14 +379,18 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     
     // In Discover Mode, dynamically create the "planned" bridge path of length 2
     if (path.length < 2 && selectedNodeId) {
-      const edges = graphData.links.filter((l: any) => (l.source?.id || l.source) === selectedNodeId);
-      const edge = edges.find((l: any) => {
-        const tid = typeof l.target === 'object' ? l.target.id : l.target;
-        return !playbackHistory.includes(tid);
-      }) || edges[0];
-      if (edge) {
-        const targetId = typeof edge.target === 'object' ? edge.target.id : edge.target;
-        path = [selectedNodeId, targetId];
+      if (manualTargetId) {
+        path = [selectedNodeId, manualTargetId];
+      } else {
+        const edges = graphData.links.filter((l: any) => (l.source?.id || l.source) === selectedNodeId);
+        const edge = edges.find((l: any) => {
+          const tid = typeof l.target === 'object' ? l.target.id : l.target;
+          return !playbackHistory.includes(tid);
+        }) || edges[0];
+        if (edge) {
+          const targetId = typeof edge.target === 'object' ? edge.target.id : edge.target;
+          path = [selectedNodeId, targetId];
+        }
       }
     }
     

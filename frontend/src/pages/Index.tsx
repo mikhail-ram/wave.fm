@@ -166,19 +166,15 @@ const Index = () => {
     return () => clearTimeout(delayDebounceFn);
   }, [searchQuery]);
 
-  const handleNodeClick = (node: any) => {
+  const executeJump = (node: any) => {
+    setManualTargetId(null);
     setAutoPlayNext(true);
     setPlaybackHistory(prev => {
-      if (!prev.includes(node.id)) {
-        return [...prev, node.id];
-      }
+      if (!prev.includes(node.id)) return [...prev, node.id];
       return prev;
     });
-    // Reset progress instantly to avoid flashing the old progress on the new edge
     playbackProgressRef.current = 0;
-    if (progressBarRef.current) {
-      progressBarRef.current.style.width = "0%";
-    }
+    if (progressBarRef.current) progressBarRef.current.style.width = "0%";
     
     setCurrentTrack({
       id: node.id,
@@ -192,18 +188,37 @@ const Index = () => {
       setHighlightedPathIds([]);
     } else if (activeTab === "interpolate") {
       if (!destTrackId) {
-        // Planning Phase: updating the starting point
         setSourceTrackId(node.id);
       } else {
-        // Route exists. Did they click on or off the path?
         if (!highlightedPathIds.includes(node.id)) {
-          // Off-path! Abort the expedition instantly.
+          // Off-path double-click: Eject & Jump
           setDestTrackId("");
           setSearchQuery("");
           setSourceTrackId(node.id);
           setHighlightedPathIds([]);
+          setActiveTab("discover"); // Kick to discover mode after ejecting
         }
-        // If on-path, currentTrack updates and journey logic handles the rest naturally.
+      }
+    }
+  };
+
+  const handleNodeClick = (node: any) => {
+    const now = Date.now();
+    const DOUBLE_CLICK_DELTA = 300; // ms
+    
+    if (clickTimerRef.current.id === node.id && (now - clickTimerRef.current.time) < DOUBLE_CLICK_DELTA) {
+      // It's a double click! Execute the Jump.
+      clickTimerRef.current = { time: 0, id: null };
+      executeJump(node);
+    } else {
+      // It's a single click! Inspect / Target
+      clickTimerRef.current = { time: now, id: node.id };
+      if (activeTab === "discover") {
+        setManualTargetId(node.id);
+      } else if (activeTab === "interpolate") {
+        // Just inspect. We do not destroy the bridge on a single tap.
+        // The node highlights natively on hover, so a single tap is non-destructive.
+        // We can optionally set it as manualTargetId if we want custom UI, but for now it's just non-destructive.
       }
     }
   };
@@ -486,19 +501,23 @@ const Index = () => {
                         
                         if (nextEdge) {
                           const targetId = typeof nextEdge.target === 'object' ? nextEdge.target.id : nextEdge.target;
-                          const targetNode = graphData.nodes.find((n: any) => n.id === targetId);
+                          let actualTargetId = targetId;
+                          if (manualTargetId) {
+                            actualTargetId = manualTargetId;
+                            setManualTargetId(null);
+                          }
+                          const targetNode = graphData.nodes.find((n: any) => n.id === actualTargetId);
                           if (targetNode) {
-                            handleNodeClick(targetNode);
+                            executeJump(targetNode);
                           }
                         }
                       } else if (activeTab === "interpolate") {
-                         // Interpolate mode next track
                          const idx = highlightedPathIds.indexOf(currentTrack.id);
                          if (idx !== -1 && idx < highlightedPathIds.length - 1) {
                            const targetId = highlightedPathIds[idx + 1];
                            const targetNode = graphData.nodes.find((n: any) => n.id === targetId) || ghostNodes.find(n => n.id === targetId);
                            if (targetNode) {
-                             handleNodeClick(targetNode);
+                             executeJump(targetNode);
                            }
                          }
                       }
