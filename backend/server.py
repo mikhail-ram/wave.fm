@@ -1,27 +1,32 @@
 import json
-from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 import uvicorn
 
-# Import logic from app.py
-from app import recommend_similar_tracks, audio_collection, text_collection, _get_nth_id
+from core.db import get_audio_collection, get_text_collection
+from core.utils import get_nth_id
+from core.recommend import recommend_similar_tracks
+from core.pathfind import interpolate_tracks
+from core.graph_data import generate_graph_data
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+audio_collection = get_audio_collection()
+text_collection = get_text_collection()
+
 class TrackRecommendation(BaseModel):
-    id: str # Full song ID like yt:xxxx
-    videoId: str # Just the YouTube ID
+    id: str
+    videoId: str
     title: str
     artist: str
     score: int
@@ -37,9 +42,8 @@ def get_recommendations(query_id: Optional[str] = None, audio_weight: float = 0.
     Takes a song ID and an audio/lyric preference slider value, and returns the most similar songs.
     """
     try:
-        # If no query_id provided, pick a random one
         if not query_id:
-            query_id = _get_nth_id(audio_collection)
+            query_id = get_nth_id(audio_collection)
             
         top_results = recommend_similar_tracks(
             audio_collection=audio_collection,
@@ -50,18 +54,13 @@ def get_recommendations(query_id: Optional[str] = None, audio_weight: float = 0.
             audio_weight=audio_weight,
         )
         
-        # Fetch metadata from ChromaDB
-        all_ids = [item["id"] for item in top_results]
-        all_ids.append(query_id)
-        
+        all_ids = [item["id"] for item in top_results] + [query_id]
         meta_resp = audio_collection.get(ids=all_ids, include=["metadatas"])
+        
         db_metadata = {}
         for i, m in zip(meta_resp.get("ids", []), meta_resp.get("metadatas", [])):
             if m:
-                db_metadata[i] = {
-                    "title": m.get("title", "Unknown"),
-                    "artist": m.get("artist", "Unknown")
-                }
+                db_metadata[i] = {"title": m.get("title", "Unknown"), "artist": m.get("artist", "Unknown")}
             else:
                 db_metadata[i] = {"title": "Unknown", "artist": "Unknown"}
         
@@ -70,8 +69,6 @@ def get_recommendations(query_id: Optional[str] = None, audio_weight: float = 0.
             cid = item["id"]
             video_id = cid.replace("yt:", "")
             meta = db_metadata.get(cid, {"title": "Unknown", "artist": "Unknown"})
-            
-            # Map score to something more human readable, e.g., 0-100.
             score_val = round(item["sim_combined"] * 100)
             
             recommendations.append(TrackRecommendation(
@@ -141,7 +138,6 @@ def get_interpolation(source_id: str, dest_id: str, n_steps: int = 3, audio_weig
     Takes a starting song, an ending song, and the desired bridge length, and calculates a smooth path between them.
     """
     try:
-        from app import interpolate_tracks
         top_results = interpolate_tracks(
             audio_collection=audio_collection,
             text_collection=text_collection,
@@ -153,6 +149,7 @@ def get_interpolation(source_id: str, dest_id: str, n_steps: int = 3, audio_weig
         
         all_ids = [item["id"] for item in top_results] + [source_id, dest_id]
         meta_resp = audio_collection.get(ids=all_ids, include=["metadatas"])
+        
         db_metadata = {}
         for i, m in zip(meta_resp.get("ids", []), meta_resp.get("metadatas", [])):
             if m:
@@ -166,8 +163,11 @@ def get_interpolation(source_id: str, dest_id: str, n_steps: int = 3, audio_weig
             meta = db_metadata.get(cid, {"title": "Unknown", "artist": "Unknown"})
             score_val = round(item["sim_combined"] * 100)
             recommendations.append(TrackRecommendation(
-                id=cid, videoId=cid.replace("yt:", ""),
-                title=meta["title"], artist=meta["artist"], score=score_val
+                id=cid, 
+                videoId=cid.replace("yt:", ""),
+                title=meta["title"], 
+                artist=meta["artist"], 
+                score=score_val
             ))
             
         s_meta = db_metadata.get(source_id, {"title": "Unknown", "artist": "Unknown"})
@@ -181,6 +181,8 @@ def get_interpolation(source_id: str, dest_id: str, n_steps: int = 3, audio_weig
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+graph_cache: Dict = {}
+
 @app.get("/api/graph")
 def get_graph(audio_weight: float = 0.5):
     """
@@ -188,14 +190,14 @@ def get_graph(audio_weight: float = 0.5):
     Returns all nodes and their top connections. Caches the result so the physics engine loads instantly on refresh.
     """
     try:
-        from app import generate_graph_data
-        global graph_cache
-        if 'graph_cache' not in globals():
-            graph_cache = {}
-            
         weight_key = round(audio_weight, 2)
         if weight_key not in graph_cache:
-            graph_cache[weight_key] = generate_graph_data(audio_collection, text_collection, top_k=5, audio_weight=audio_weight)
+            graph_cache[weight_key] = generate_graph_data(
+                audio_collection, 
+                text_collection, 
+                top_k=5, 
+                audio_weight=audio_weight
+            )
             
         return graph_cache[weight_key]
     except Exception as e:
