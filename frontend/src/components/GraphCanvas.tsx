@@ -598,7 +598,6 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
         linkDirectionalParticleWidth={0}
         onNodeHover={(node) => setHoverNode(node)}
         onNodeClick={(node) => {
-          needsRecenteringRef.current = false;
           onNodeClick(node);
           fgRef.current.centerAt(node.x, node.y, 1000);
         }}
