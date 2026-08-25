@@ -187,6 +187,20 @@ const Index = () => {
     if (activeTab === "discover") {
       setSourceTrackId(node.id);
       setHighlightedPathIds([]);
+    } else if (activeTab === "interpolate") {
+      if (!destTrackId) {
+        // Planning Phase: updating the starting point
+        setSourceTrackId(node.id);
+      } else {
+        // Route exists. Did they click on or off the path?
+        if (!highlightedPathIds.includes(node.id)) {
+          // Off-path! Abort the expedition instantly.
+          setDestTrackId("");
+          setSearchQuery("");
+          setSourceTrackId(node.id);
+        }
+        // If on-path, currentTrack updates and journey logic handles the rest naturally.
+      }
     }
   };
 
@@ -231,7 +245,10 @@ const Index = () => {
             </button>
             <button 
               className={`flex-1 py-2 text-xs font-bold tracking-widest uppercase border-2 transition-all ${activeTab === 'interpolate' ? 'bg-white text-black border-white' : 'text-white border-transparent hover:border-white/50'}`}
-              onClick={() => setActiveTab('interpolate')}
+              onClick={() => {
+                setActiveTab('interpolate');
+                setSourceTrackId(currentTrack.id);
+              }}
               style={{ fontFamily: 'monospace' }}
             >
               INTERPOLATE
