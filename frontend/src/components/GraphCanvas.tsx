@@ -14,6 +14,7 @@ interface GraphCanvasProps {
   playbackHistory?: string[];
   manualTargetId?: string | null;
   inspectedNodeId?: string | null;
+  isJourneyLocked?: boolean;
   onBackgroundClick?: () => void;
 }
 
@@ -30,6 +31,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   playbackHistory = [],
   manualTargetId = null,
   inspectedNodeId = null,
+  isJourneyLocked = false,
   onBackgroundClick,
 }) => {
   const fgRef = useRef<any>();
@@ -162,6 +164,34 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     return baseSize + Math.min(extraSize, 8);
   }, [selectedNodeId, sourceNodeId, destNodeId, highlightedPathIds, activeDegrees]);
 
+  const getNextTargetId = useCallback(() => {
+    if (!selectedNodeId) return null;
+    
+    // In Interpolate mode: lock onto the next step in the bridge ONLY if journey is locked
+    if (isJourneyLocked && highlightedPathIds.length >= 2) {
+      const idx = highlightedPathIds.indexOf(selectedNodeId);
+      if (idx !== -1 && idx < highlightedPathIds.length - 1) {
+        return highlightedPathIds[idx + 1];
+      }
+    }
+    
+    // Fallback: If not on the bridge, or in Discover mode, predict the next natural edge
+    if (manualTargetId) {
+      return manualTargetId;
+    }
+    
+    const edges = graphData.links.filter((l: any) => (l.source?.id || l.source) === selectedNodeId);
+    const edge = edges.find((l: any) => {
+      const tid = typeof l.target === 'object' ? l.target.id : l.target;
+      return !playbackHistory.includes(tid);
+    }) || edges[0];
+    
+    if (edge) {
+      return typeof edge.target === 'object' ? edge.target.id : edge.target;
+    }
+    
+    return null;
+  }, [selectedNodeId, highlightedPathIds, manualTargetId, graphData.links, playbackHistory, isJourneyLocked]);
 
   const crosshairRef = useRef<HTMLDivElement>(null);
   const bracketsRef = useRef<HTMLDivElement>(null);
@@ -182,31 +212,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
 
     // Sync CSS HUD Target Position
     if (crosshairRef.current && fgRef.current) {
-      // Find the target to lock onto (Always the IMMEDIATE next step)
-      let computedTargetId = null;
-      if (manualTargetId) {
-        computedTargetId = manualTargetId;
-      } else if (selectedNodeId) {
-        if (highlightedPathIds.length >= 2) {
-          // In Interpolate mode, lock onto the next step in the bridge
-          const idx = highlightedPathIds.indexOf(selectedNodeId);
-          if (idx !== -1 && idx < highlightedPathIds.length - 1) {
-            computedTargetId = highlightedPathIds[idx + 1];
-          } else if (destNodeId) {
-            computedTargetId = destNodeId;
-          }
-        } else {
-          // In Discover mode, lock onto the most similar neighbor, respecting history
-          const edges = graphData.links.filter((l: any) => (l.source?.id || l.source) === selectedNodeId);
-          const edge = edges.find((l: any) => {
-            const tid = typeof l.target === 'object' ? l.target.id : l.target;
-            return !playbackHistory.includes(tid);
-          }) || edges[0];
-          if (edge) {
-            computedTargetId = typeof edge.target === 'object' ? edge.target.id : edge.target;
-          }
-        }
-      }
+      const computedTargetId = getNextTargetId();
 
       if (computedTargetId) {
         const destNode = internalGraphData.nodes.find((n: any) => n.id === computedTargetId);
@@ -214,12 +220,18 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
           const coords = fgRef.current.graph2ScreenCoords(destNode.x, destNode.y);
           crosshairRef.current.style.transform = `translate(${coords.x}px, ${coords.y}px)`;
           crosshairRef.current.style.display = 'block';
+          
+          // Apply opacity if we are previewing a route but haven't committed to it
+          const isPreviewing = highlightedPathIds.length >= 2 && !isJourneyLocked;
+          const isManualOverride = computedTargetId === manualTargetId && manualTargetId !== null;
+          const shouldDim = isPreviewing || (isManualOverride && !isJourneyLocked);
+          crosshairRef.current.style.opacity = shouldDim ? '0.15' : '0.7';
         }
       } else {
         crosshairRef.current.style.display = 'none';
       }
     }
-  }, [internalGraphData.nodes, destNodeId, dimensions, selectedNodeId, graphData, manualTargetId]);
+  }, [internalGraphData.nodes, destNodeId, dimensions, selectedNodeId, graphData, manualTargetId, getNextTargetId, highlightedPathIds, isJourneyLocked]);
 
 
   const labelsToDraw = useMemo(() => {
@@ -313,7 +325,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     ctx.stroke();
     
     // If it's a key node (active or source), fill it and glow
-    if (isSelected || (isSource && !hasInterpolation)) {
+    if (isSelected || isSource) {
       ctx.fillStyle = color;
       ctx.fill();
       ctx.shadowBlur = 10;
@@ -452,31 +464,8 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     const progress = playbackProgressRef?.current || 0;
     if (!selectedNodeId || progress === 0) return;
     
-    let targetId = null;
+    const targetId = getNextTargetId();
     const sourceId = selectedNodeId;
-
-    if (highlightedPathIds.length >= 2) {
-      // Interpolate mode: find where we are in the path
-      const idx = highlightedPathIds.indexOf(selectedNodeId);
-      if (idx !== -1 && idx < highlightedPathIds.length - 1) {
-        targetId = highlightedPathIds[idx + 1];
-      }
-    } else {
-      // Discover mode: respect manual override, otherwise pick optimal node
-      if (manualTargetId) {
-        targetId = manualTargetId;
-      } else {
-        const edges = graphData.links.filter((l: any) => l.source?.id === selectedNodeId || l.source === selectedNodeId);
-        const edge = edges.find((l: any) => {
-          const tid = typeof l.target === 'object' ? l.target.id : l.target;
-          return !playbackHistory.includes(tid);
-        }) || edges[0];
-        
-        if (edge) {
-          targetId = typeof edge.target === 'object' ? edge.target.id : edge.target;
-        }
-      }
-    }
 
     if (!targetId) return;
 
@@ -490,12 +479,17 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
       const srcRadius = getNodeSize(source.id) + 2; // + 2px extra padding
       const dstRadius = getNodeSize(target.id) + 2;
       
+      const isPreviewing = highlightedPathIds.length >= 2 && !isJourneyLocked;
+      const isManualOverride = targetId === manualTargetId && manualTargetId !== null;
+      const shouldDim = isPreviewing || (isManualOverride && !isJourneyLocked);
+      
       ctx.save();
+      ctx.globalAlpha = shouldDim ? 0.15 : 1.0;
       ctx.translate(source.x, source.y);
       ctx.rotate(angle);
 
-      // Draw predictive dashed line in discover mode
-      if (highlightedPathIds.length < 2) {
+      // Draw predictive dashed line if we are not actively locked onto a bridge
+      if (!isJourneyLocked) {
         ctx.beginPath();
         ctx.moveTo(srcRadius, 0);
         ctx.lineTo(d - dstRadius, 0);
@@ -526,14 +520,16 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
       ctx.setLineDash([]); // Ensure solid line for arrow
       ctx.stroke();
       
-      // Brutalist subtle glow
-      ctx.shadowBlur = 6;
-      ctx.shadowColor = '#ffffff';
-      ctx.stroke();
+      if (!shouldDim) {
+        // Brutalist subtle glow
+        ctx.shadowBlur = 6;
+        ctx.shadowColor = '#ffffff';
+        ctx.stroke();
+      }
       
       ctx.restore();
     }
-  }, [selectedNodeId, highlightedPathIds, graphData, playbackProgressRef, getNodeSize, playbackHistory, manualTargetId]);
+  }, [selectedNodeId, highlightedPathIds, graphData, playbackProgressRef, getNodeSize, getNextTargetId, isJourneyLocked]);
 
   const getFramedNodeIds = useCallback((coreIds: string[]) => {
     const framed = new Set<string>(coreIds);

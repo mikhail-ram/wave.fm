@@ -53,7 +53,9 @@ const Index = () => {
   // Interpolate state
   const [sourceTrackId, setSourceTrackId] = useState("");
   const [destTrackId, setDestTrackId] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [sourceSearchQuery, setSourceSearchQuery] = useState("");
+  const [destSearchQuery, setDestSearchQuery] = useState("");
+  const [interpolateFocusMode, setInterpolateFocusMode] = useState<"SOURCE" | "DESTINATION">("DESTINATION");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [nSteps, setNSteps] = useState([10]);
@@ -151,8 +153,10 @@ const Index = () => {
 
   // Search effect (debounced)
   const isInternalSearchUpdate = useRef(false);
+  const activeSearchQuery = interpolateFocusMode === "SOURCE" ? sourceSearchQuery : destSearchQuery;
+  
   useEffect(() => {
-    if (!searchQuery) {
+    if (!activeSearchQuery) {
       setSearchResults([]);
       return;
     }
@@ -162,7 +166,7 @@ const Index = () => {
     }
     
     const delayDebounceFn = setTimeout(() => {
-      fetch(`http://localhost:8000/api/search?q=${encodeURIComponent(searchQuery)}`)
+      fetch(`http://localhost:8000/api/search?q=${encodeURIComponent(activeSearchQuery)}`)
         .then(res => res.json())
         .then(data => {
           setSearchResults(data.results || []);
@@ -171,7 +175,7 @@ const Index = () => {
         .catch(err => console.error(err));
     }, 300);
     return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery]);
+  }, [activeSearchQuery, interpolateFocusMode]);
 
   const executeJump = (node: any) => {
     setManualTargetId(null);
@@ -201,8 +205,9 @@ const Index = () => {
         if (!highlightedPathIds.includes(node.id)) {
           // Off-path double-click: Eject & Jump
           setDestTrackId("");
-          setSearchQuery("");
+          setDestSearchQuery("");
           setSourceTrackId(node.id);
+          setSourceSearchQuery(`${node.title?.toUpperCase() || 'UNKNOWN'} // ${node.artist?.toUpperCase() || 'UNKNOWN'}`);
           setHighlightedPathIds([]);
           setJourneyState("IDLE");
           setActiveTab("discover"); // Kick to discover mode after ejecting
@@ -241,9 +246,17 @@ const Index = () => {
       } else if (activeTab === "interpolate") {
         setInspectedNodeId(node.id);
         if (journeyState !== "LOCKED") {
-          setDestTrackId(node.id);
-          setSearchQuery(`${node.title?.toUpperCase() || 'UNKNOWN'} // ${node.artist?.toUpperCase() || 'UNKNOWN'}`);
-          setJourneyState("PREVIEW");
+          const nodeStr = `${node.title?.toUpperCase() || 'UNKNOWN'} // ${node.artist?.toUpperCase() || 'UNKNOWN'}`;
+          if (interpolateFocusMode === "SOURCE") {
+            setSourceTrackId(node.id);
+            setSourceSearchQuery(nodeStr);
+          } else {
+            setDestTrackId(node.id);
+            setDestSearchQuery(nodeStr);
+          }
+          if ((interpolateFocusMode === "SOURCE" && destTrackId) || (interpolateFocusMode === "DESTINATION" && sourceTrackId)) {
+            setJourneyState("PREVIEW");
+          }
         }
       }
     }
@@ -265,6 +278,7 @@ const Index = () => {
         playbackHistory={playbackHistory}
         manualTargetId={manualTargetId}
         inspectedNodeId={inspectedNodeId}
+        isJourneyLocked={journeyState === "LOCKED"}
         onBackgroundClick={() => {
           setManualTargetId(null);
           setInspectedNodeId(null);
@@ -283,7 +297,15 @@ const Index = () => {
           <div className="flex gap-2 border-t-2 border-white pt-4">
             <button 
               className={`flex-1 py-2 text-xs font-bold tracking-widest uppercase border-2 transition-all ${activeTab === 'discover' ? 'bg-white text-black border-white' : 'text-white border-transparent hover:border-white/50'}`}
-              onClick={() => setActiveTab('discover')}
+              onClick={() => {
+                setActiveTab('discover');
+                setDestTrackId("");
+                setDestSearchQuery("");
+                setHighlightedPathIds([]);
+                setJourneyState("IDLE");
+                setManualTargetId(null);
+                setInspectedNodeId(null);
+              }}
               style={{ fontFamily: 'monospace' }}
             >
               DISCOVER
@@ -293,7 +315,13 @@ const Index = () => {
               onClick={() => {
                 setActiveTab('interpolate');
                 setSourceTrackId(currentTrack.id);
-                if (!destTrackId) setJourneyState("IDLE");
+                setSourceSearchQuery(`${currentTrack.title.toUpperCase()} // ${currentTrack.artist.toUpperCase()}`);
+                setDestTrackId("");
+                setDestSearchQuery("");
+                setHighlightedPathIds([]);
+                setInterpolateFocusMode("DESTINATION");
+                setJourneyState("IDLE");
+                setInspectedNodeId(null);
               }}
               style={{ fontFamily: 'monospace' }}
             >
@@ -311,38 +339,74 @@ const Index = () => {
             <div className="absolute bottom-1 right-2 text-[8px] font-mono text-white/50">[ ///// ]</div>
 
             <div className="space-y-6 relative" ref={searchContainerRef}>
-              <div>
-                <Label className="text-[10px] tracking-widest uppercase text-white font-bold" style={{ fontFamily: 'monospace' }}>DESTINATION_NODE</Label>
-                <div className="relative">
-                  <Input 
-                    placeholder="SEARCH_DB..." 
-                    value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value);
-                      if (destTrackId) setDestTrackId("");
-                    }}
-                    onFocus={() => { if (searchResults.length > 0) setIsDropdownOpen(true); }}
-                    className="bg-black border-2 border-white text-white rounded-none mt-2 font-mono uppercase pr-8"
-                  />
-                  {destTrackId && (
-                    <button 
-                      onClick={() => {
-                        setDestTrackId("");
-                        setSearchQuery("");
-                        setHighlightedPathIds([]);
-                        setJourneyState("IDLE");
+              <div className="space-y-4">
+                <div>
+                  <Label className={`text-[10px] tracking-widest uppercase font-bold transition-colors ${interpolateFocusMode === 'SOURCE' ? 'text-white' : 'text-white/50'}`} style={{ fontFamily: 'monospace' }}>[ FROM ] SOURCE_NODE</Label>
+                  <div className="relative">
+                    <Input 
+                      placeholder="SEARCH_DB..." 
+                      value={sourceSearchQuery}
+                      onChange={(e) => {
+                        setSourceSearchQuery(e.target.value);
+                        if (sourceTrackId) setSourceTrackId("");
                       }}
-                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-white/50 hover:text-white transition-colors"
-                      title="Abort Expedition"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                    </button>
-                  )}
+                      onFocus={() => {
+                        setInterpolateFocusMode("SOURCE");
+                        if (searchResults.length > 0) setIsDropdownOpen(true);
+                      }}
+                      className={`bg-black border-2 transition-colors text-white rounded-none mt-1 font-mono uppercase pr-8 ${interpolateFocusMode === 'SOURCE' ? 'border-white' : 'border-white/30'}`}
+                      disabled={isJourneyLocked}
+                    />
+                  </div>
                 </div>
+
+                <div>
+                  <Label className={`text-[10px] tracking-widest uppercase font-bold transition-colors ${interpolateFocusMode === 'DESTINATION' ? 'text-white' : 'text-white/50'}`} style={{ fontFamily: 'monospace' }}>[ TO ] DESTINATION_NODE</Label>
+                  <div className="relative">
+                    <Input 
+                      placeholder="SEARCH_DB..." 
+                      value={destSearchQuery}
+                      onChange={(e) => {
+                        setDestSearchQuery(e.target.value);
+                        if (destTrackId) setDestTrackId("");
+                      }}
+                      onFocus={() => {
+                        setInterpolateFocusMode("DESTINATION");
+                        if (searchResults.length > 0) setIsDropdownOpen(true);
+                      }}
+                      className={`bg-black border-2 transition-colors text-white rounded-none mt-1 font-mono uppercase pr-8 ${interpolateFocusMode === 'DESTINATION' ? 'border-white' : 'border-white/30'}`}
+                      disabled={isJourneyLocked}
+                    />
+                    {destTrackId && !isJourneyLocked && (
+                      <button 
+                        onClick={() => {
+                          setDestTrackId("");
+                          setDestSearchQuery("");
+                          setHighlightedPathIds([]);
+                          setJourneyState("IDLE");
+                        }}
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 text-white/50 hover:text-white transition-colors"
+                        title="Clear Destination"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
                 {journeyState === "PREVIEW" && (
                   <div className="mt-3 flex gap-2">
                     <button 
-                      onClick={() => setJourneyState("LOCKED")}
+                      onClick={() => {
+                        setManualTargetId(null);
+                        setInspectedNodeId(null);
+                        if (sourceTrackId !== currentTrack.id) {
+                          const sourceNode = graphData.nodes.find((n: any) => n.id === sourceTrackId);
+                          if (sourceNode) executeJump(sourceNode);
+                        } else {
+                          setJourneyState("LOCKED");
+                        }
+                      }}
                       className="flex-1 bg-white border-2 border-white text-black hover:bg-transparent hover:text-white text-[10px] font-bold font-mono tracking-widest uppercase py-2 transition-all"
                     >
                       [ INITIATE_EXPEDITION ]
@@ -350,7 +414,7 @@ const Index = () => {
                     <button 
                       onClick={() => {
                         setDestTrackId("");
-                        setSearchQuery("");
+                        setDestSearchQuery("");
                         setHighlightedPathIds([]);
                         setJourneyState("IDLE");
                       }}
@@ -366,7 +430,7 @@ const Index = () => {
                     <button 
                       onClick={() => {
                         setDestTrackId("");
-                        setSearchQuery("");
+                        setDestSearchQuery("");
                         setHighlightedPathIds([]);
                         setJourneyState("IDLE");
                       }}
@@ -378,15 +442,23 @@ const Index = () => {
                 )}
                 
                 {isDropdownOpen && searchResults.length > 0 && (
-                  <div className="absolute top-[60px] left-0 right-0 bg-black border-2 border-white z-50 max-h-60 overflow-y-auto">
+                  <div className="absolute top-[130px] left-0 right-0 bg-black border-2 border-white z-50 max-h-60 overflow-y-auto">
                     {searchResults.map((result) => (
                       <div
                         key={result.id}
                         className="p-3 border-b-2 border-white/20 last:border-b-0 hover:bg-white hover:text-black cursor-pointer font-mono"
                         onClick={() => {
                           isInternalSearchUpdate.current = true;
-                          setDestTrackId(result.id);
-                          setSearchQuery(`${result.title.toUpperCase()} // ${result.artist.toUpperCase()}`);
+                          const nodeStr = `${result.title.toUpperCase()} // ${result.artist.toUpperCase()}`;
+                          if (interpolateFocusMode === "SOURCE") {
+                            setSourceTrackId(result.id);
+                            setSourceSearchQuery(nodeStr);
+                            if (destTrackId) setJourneyState("PREVIEW");
+                          } else {
+                            setDestTrackId(result.id);
+                            setDestSearchQuery(nodeStr);
+                            if (sourceTrackId) setJourneyState("PREVIEW");
+                          }
                           setIsDropdownOpen(false);
                         }}
                       >
@@ -396,8 +468,6 @@ const Index = () => {
                     ))}
                   </div>
                 )}
-              </div>
-              
               <div className="pt-2 border-t-2 border-white/20 relative">
                 {isJourneyLocked && (
                   <div className="absolute inset-0 z-10 bg-black/80 backdrop-blur-sm flex items-center justify-center border border-white/20">
@@ -555,7 +625,7 @@ const Index = () => {
                     if (e.data === 0) { // ENDED
                       setAutoPlayNext(true);
                       // Auto-play next logic
-                      if (activeTab === "discover" && graphData.links.length > 0) {
+                      if (activeTab === "discover" || (activeTab === "interpolate" && journeyState !== "LOCKED")) {
                         const currentId = currentTrack.id;
                         // Find the first edge that is NOT in history
                         const edges = graphData.links.filter((l: any) => 
@@ -581,7 +651,7 @@ const Index = () => {
                             executeJump(targetNode);
                           }
                         }
-                      } else if (activeTab === "interpolate") {
+                      } else if (activeTab === "interpolate" && journeyState === "LOCKED") {
                          const idx = highlightedPathIds.indexOf(currentTrack.id);
                          if (idx !== -1 && idx < highlightedPathIds.length - 1) {
                            const targetId = highlightedPathIds[idx + 1];
