@@ -531,12 +531,27 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     }
   }, [selectedNodeId, highlightedPathIds, graphData, playbackProgressRef, getNodeSize, playbackHistory]);
 
-  // Cinematic Framing: Zoom to fit the Interpolation path when it's drawn
+  const getFramedNodeIds = useCallback((coreIds: string[]) => {
+    const framed = new Set<string>(coreIds);
+    if (graphData && graphData.links) {
+      graphData.links.forEach((l: any) => {
+        const srcStr = l.source?.id || l.source;
+        const tgtStr = l.target?.id || l.target;
+        if (!activeLinksRef.current.has(`${srcStr}-${tgtStr}`)) return;
+        if (coreIds.includes(srcStr)) framed.add(tgtStr);
+        if (coreIds.includes(tgtStr)) framed.add(srcStr);
+      });
+    }
+    return framed;
+  }, [graphData]);
+
+  // Cinematic Framing: Zoom to fit the core path/nodes AND their immediate neighbors
   useEffect(() => {
     if (highlightedPathIds.length > 1 && fgRef.current) {
-      fgRef.current.zoomToFit(1000, 100, (node: any) => highlightedPathIds.includes(node.id));
+      const framedSet = getFramedNodeIds(highlightedPathIds);
+      fgRef.current.zoomToFit(1000, 100, (node: any) => framedSet.has(node.id));
     }
-  }, [highlightedPathIds]);
+  }, [highlightedPathIds, getFramedNodeIds]);
 
   // Universe Settling: Recenter camera after physics stabilize from a slider tweak
   const needsRecenteringRef = useRef(false);
@@ -600,8 +615,9 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
         onNodeClick={(node) => {
           onNodeClick(node);
           if (node.id !== selectedNodeId && selectedNodeId && highlightedPathIds.length < 2) {
-            // In Discover mode, if you click a different node, zoom to fit BOTH current and clicked node
-            fgRef.current.zoomToFit(1000, 100, (n: any) => n.id === selectedNodeId || n.id === node.id);
+            // In Discover mode, if you click a different node, zoom to fit BOTH current and clicked node + neighbors
+            const framedSet = getFramedNodeIds([selectedNodeId, node.id]);
+            fgRef.current.zoomToFit(1000, 100, (n: any) => framedSet.has(n.id));
           } else {
             fgRef.current.centerAt(node.x, node.y, 1000);
           }
@@ -616,11 +632,13 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
             const isDiscoverMode = highlightedPathIds.length < 2;
             
             if (!isDiscoverMode && highlightedPathIds.length > 1) {
-               // In Interpolate mode, always re-frame the entire path after physics settle
-               fgRef.current.zoomToFit(1000, 100, (n: any) => highlightedPathIds.includes(n.id));
+               // In Interpolate mode, always re-frame the entire path + neighbors after physics settle
+               const framedSet = getFramedNodeIds(highlightedPathIds);
+               fgRef.current.zoomToFit(1000, 100, (n: any) => framedSet.has(n.id));
             } else if (isDiscoverMode && targetId && targetId !== selectedNodeId) {
-               // Zoom to fit BOTH active song and target song after physics settle
-               fgRef.current.zoomToFit(1000, 100, (n: any) => n.id === selectedNodeId || n.id === targetId);
+               // Zoom to fit BOTH active song and target song + neighbors after physics settle
+               const framedSet = getFramedNodeIds([selectedNodeId, targetId]);
+               fgRef.current.zoomToFit(1000, 100, (n: any) => framedSet.has(n.id));
             } else if (selectedNodeId) {
                // No secondary target? Just center on active song.
                const activeNode = graphData.nodes.find((n: any) => n.id === selectedNodeId);
