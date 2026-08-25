@@ -250,16 +250,43 @@ const Index = () => {
             <div className="space-y-6 relative" ref={searchContainerRef}>
               <div>
                 <Label className="text-[10px] tracking-widest uppercase text-white font-bold" style={{ fontFamily: 'monospace' }}>DESTINATION_NODE</Label>
-                <Input 
-                  placeholder="SEARCH_DB..." 
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    if (destTrackId) setDestTrackId("");
-                  }}
-                  onFocus={() => { if (searchResults.length > 0) setIsDropdownOpen(true); }}
-                  className="bg-black border-2 border-white text-white rounded-none mt-2 font-mono uppercase"
-                />
+                <div className="relative">
+                  <Input 
+                    placeholder="SEARCH_DB..." 
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      if (destTrackId) setDestTrackId("");
+                    }}
+                    onFocus={() => { if (searchResults.length > 0) setIsDropdownOpen(true); }}
+                    className="bg-black border-2 border-white text-white rounded-none mt-2 font-mono uppercase pr-8"
+                  />
+                  {destTrackId && (
+                    <button 
+                      onClick={() => {
+                        setDestTrackId("");
+                        setSearchQuery("");
+                      }}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-white/50 hover:text-white transition-colors"
+                      title="Abort Expedition"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                  )}
+                </div>
+                {isJourneyActive && (
+                  <div className="mt-3">
+                    <button 
+                      onClick={() => {
+                        setDestTrackId("");
+                        setSearchQuery("");
+                      }}
+                      className="w-full bg-transparent border-2 border-dashed border-red-500/50 text-red-500/80 hover:bg-red-500/10 hover:border-red-500 hover:text-red-500 text-[10px] font-mono tracking-widest uppercase py-2 transition-all"
+                    >
+                      [ ABORT_EXPEDITION ]
+                    </button>
+                  </div>
+                )}
                 
                 {isDropdownOpen && searchResults.length > 0 && (
                   <div className="absolute top-[60px] left-0 right-0 bg-black border-2 border-white z-50 max-h-60 overflow-y-auto">
@@ -334,7 +361,7 @@ const Index = () => {
           {isJourneyActive && (
             <div className="absolute inset-0 z-10 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center">
               <span className="text-[10px] font-mono tracking-widest uppercase text-white animate-pulse mb-1">[ LATENT_SPACE_LOCKED ]</span>
-              <span className="text-[8px] font-mono tracking-widest uppercase text-white/50">FINISH JOURNEY TO UNLOCK</span>
+              <span className="text-[8px] font-mono tracking-widest uppercase text-white/50 text-center">FINISH OR ABORT EXPEDITION<br/>TO UNLOCK</span>
             </div>
           )}
           <div className={`transition-opacity duration-300 ${isJourneyActive ? 'opacity-30' : 'opacity-100'}`}>
