@@ -373,16 +373,44 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   }, [activeDegrees]);
 
   const paintBridge = useCallback((ctx: CanvasRenderingContext2D, globalScale: number) => {
-    if (highlightedPathIds.length < 2) return;
+    let path = highlightedPathIds;
+    
+    // In Discover Mode, dynamically create the "planned" bridge path of length 2
+    if (path.length < 2 && selectedNodeId) {
+      const edges = graphData.links.filter((l: any) => (l.source?.id || l.source) === selectedNodeId);
+      const edge = edges.find((l: any) => {
+        const tid = typeof l.target === 'object' ? l.target.id : l.target;
+        return !playbackHistory.includes(tid);
+      }) || edges[0];
+      if (edge) {
+        const targetId = typeof edge.target === 'object' ? edge.target.id : edge.target;
+        path = [selectedNodeId, targetId];
+      }
+    }
+    
+    if (path.length < 2) return;
     
     ctx.save();
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 1.5 / globalScale;
-    ctx.setLineDash([4, 4]);
+    
+    const currentIndex = path.indexOf(selectedNodeId);
 
-    for (let i = 0; i < highlightedPathIds.length - 1; i++) {
-      const src = graphData.nodes.find((n: any) => n.id === highlightedPathIds[i]);
-      const dst = graphData.nodes.find((n: any) => n.id === highlightedPathIds[i+1]);
+    for (let i = 0; i < path.length - 1; i++) {
+      // Determine if this segment has been traversed
+      // If we are at C (index 2), then A->B (i=0) and B->C (i=1) have been traversed
+      const isTraversed = currentIndex !== -1 && i < currentIndex;
+      
+      if (isTraversed) {
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 0.5; // Slightly dim the traversed history
+      } else {
+        ctx.setLineDash([4, 4]);
+        ctx.globalAlpha = 1.0;
+      }
+
+      const src = graphData.nodes.find((n: any) => n.id === path[i]);
+      const dst = graphData.nodes.find((n: any) => n.id === path[i+1]);
       if (src && dst && typeof src.x === 'number' && typeof dst.x === 'number') {
         const d = Math.hypot(dst.x - src.x, dst.y - src.y);
         const angle = Math.atan2(dst.y - src.y, dst.x - src.x);
@@ -404,7 +432,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     }
     
     ctx.restore();
-  }, [highlightedPathIds, graphData, getNodeSize]);
+  }, [highlightedPathIds, graphData, getNodeSize, selectedNodeId, playbackHistory]);
 
   const paintPacket = useCallback((ctx: CanvasRenderingContext2D, globalScale: number) => {
     const progress = playbackProgressRef?.current || 0;
