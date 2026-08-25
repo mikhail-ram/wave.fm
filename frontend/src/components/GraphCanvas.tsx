@@ -225,7 +225,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
           const isPreviewing = highlightedPathIds.length >= 2 && !isJourneyLocked;
           const isManualOverride = computedTargetId === manualTargetId && manualTargetId !== null;
           const shouldDim = isPreviewing || (isManualOverride && !isJourneyLocked);
-          crosshairRef.current.style.opacity = shouldDim ? '0.15' : '0.7';
+          crosshairRef.current.style.opacity = shouldDim ? '0.4' : '0.7';
         }
       } else {
         crosshairRef.current.style.display = 'none';
@@ -484,7 +484,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
       const shouldDim = isPreviewing || (isManualOverride && !isJourneyLocked);
       
       ctx.save();
-      ctx.globalAlpha = shouldDim ? 0.15 : 1.0;
+      ctx.globalAlpha = shouldDim ? 0.4 : 1.0;
       ctx.translate(source.x, source.y);
       ctx.rotate(angle);
 
@@ -520,12 +520,10 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
       ctx.setLineDash([]); // Ensure solid line for arrow
       ctx.stroke();
       
-      if (!shouldDim) {
-        // Brutalist subtle glow
-        ctx.shadowBlur = 6;
-        ctx.shadowColor = '#ffffff';
-        ctx.stroke();
-      }
+      // Brutalist subtle glow, but dim it if we are previewing
+      ctx.shadowBlur = 6;
+      ctx.shadowColor = shouldDim ? 'rgba(255, 255, 255, 0.4)' : '#ffffff';
+      ctx.stroke();
       
       ctx.restore();
     }
