@@ -12,6 +12,7 @@ interface GraphCanvasProps {
   isInterpolating?: boolean;
   playbackProgressRef?: React.MutableRefObject<number>;
   playbackHistory?: string[];
+  manualTargetId?: string | null;
 }
 
 export const GraphCanvas: React.FC<GraphCanvasProps> = ({
@@ -25,6 +26,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   isInterpolating = false,
   playbackProgressRef,
   playbackHistory = [],
+  manualTargetId = null,
 }) => {
   const fgRef = useRef<any>();
   const containerRef = useRef<HTMLDivElement>(null);
