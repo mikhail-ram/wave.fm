@@ -21,6 +21,7 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [player, setPlayer] = useState<any | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackHistory, setPlaybackHistory] = useState<string[]>([]);
   const playbackProgressRef = useRef(0);
   const progressBarRef = useRef<HTMLDivElement>(null);
 
@@ -108,6 +109,7 @@ const Index = () => {
             videoId: first.videoId
           });
           setSourceTrackId(first.id);
+          setPlaybackHistory([first.id]);
         }
       })
       .catch(err => console.error("Failed to load graph", err));
@@ -161,6 +163,12 @@ const Index = () => {
   }, [searchQuery]);
 
   const handleNodeClick = (node: any) => {
+    setPlaybackHistory(prev => {
+      if (!prev.includes(node.id)) {
+        return [...prev, node.id];
+      }
+      return prev;
+    });
     // Reset progress instantly to avoid flashing the old progress on the new edge
     playbackProgressRef.current = 0;
     if (progressBarRef.current) {
@@ -193,6 +201,7 @@ const Index = () => {
         highlightedPathIds={activeTab === "interpolate" ? highlightedPathIds : []}
         playbackProgressRef={playbackProgressRef}
         ghostNodes={ghostNodes}
+        playbackHistory={playbackHistory}
       />
 
       {/* Floating HUD - Top Left - Logo & Tabs */}
@@ -377,7 +386,49 @@ const Index = () => {
                   videoId={currentTrack.videoId}
                   opts={{ width: '0', height: '0', playerVars: { autoplay: 0 } }}
                   onReady={(e) => setPlayer(e.target)}
-                  onStateChange={(e) => setIsPlaying(e.data === 1)}
+                  onStateChange={(e) => {
+                    setIsPlaying(e.data === 1);
+                    if (e.data === 0) { // ENDED
+                      // Auto-play next logic
+                      if (activeTab === "discover" && graphData.links.length > 0) {
+                        const currentId = currentTrack.id;
+                        // Find the first edge that is NOT in history
+                        const edges = graphData.links.filter((l: any) => 
+                          (l.source?.id || l.source) === currentId
+                        );
+                        let nextEdge = edges.find((l: any) => {
+                          const tid = typeof l.target === 'object' ? l.target.id : l.target;
+                          return !playbackHistory.includes(tid);
+                        });
+                        
+                        // Fallback to absolute closest if history exhausts all 5 edges
+                        if (!nextEdge && edges.length > 0) nextEdge = edges[0];
+                        
+                        if (nextEdge) {
+                          const targetId = typeof nextEdge.target === 'object' ? nextEdge.target.id : nextEdge.target;
+                          const targetNode = graphData.nodes.find((n: any) => n.id === targetId);
+                          if (targetNode) {
+                            handleNodeClick(targetNode);
+                            setTimeout(() => {
+                                // Wait for react to re-render, then play
+                                player?.playVideo();
+                            }, 500);
+                          }
+                        }
+                      } else if (activeTab === "interpolate") {
+                         // Interpolate mode next track
+                         const idx = highlightedPathIds.indexOf(currentTrack.id);
+                         if (idx !== -1 && idx < highlightedPathIds.length - 1) {
+                           const targetId = highlightedPathIds[idx + 1];
+                           const targetNode = graphData.nodes.find((n: any) => n.id === targetId) || ghostNodes.find(n => n.id === targetId);
+                           if (targetNode) {
+                             handleNodeClick(targetNode);
+                             setTimeout(() => { player?.playVideo(); }, 500);
+                           }
+                         }
+                      }
+                    }
+                  }}
                 />
               </div>
             </div>

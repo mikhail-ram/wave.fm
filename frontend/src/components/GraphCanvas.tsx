@@ -11,6 +11,7 @@ interface GraphCanvasProps {
   highlightedPathIds?: string[];
   isInterpolating?: boolean;
   playbackProgressRef?: React.MutableRefObject<number>;
+  playbackHistory?: string[];
 }
 
 export const GraphCanvas: React.FC<GraphCanvasProps> = ({
@@ -23,6 +24,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   highlightedPathIds = [],
   isInterpolating = false,
   playbackProgressRef,
+  playbackHistory = [],
 }) => {
   const fgRef = useRef<any>();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -373,8 +375,13 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
         targetId = highlightedPathIds[idx + 1];
       }
     } else {
-      // Discover mode: pick the first out-edge target dynamically
-      const edge = graphData.links.find((l: any) => l.source?.id === selectedNodeId || l.source === selectedNodeId);
+      // Discover mode: pick the first out-edge target dynamically respecting history
+      const edges = graphData.links.filter((l: any) => l.source?.id === selectedNodeId || l.source === selectedNodeId);
+      const edge = edges.find((l: any) => {
+        const tid = typeof l.target === 'object' ? l.target.id : l.target;
+        return !playbackHistory.includes(tid);
+      }) || edges[0];
+      
       if (edge) {
         targetId = typeof edge.target === 'object' ? edge.target.id : edge.target;
       }
@@ -435,7 +442,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
       
       ctx.restore();
     }
-  }, [selectedNodeId, highlightedPathIds, graphData, playbackProgressRef, getNodeSize]);
+  }, [selectedNodeId, highlightedPathIds, graphData, playbackProgressRef, getNodeSize, playbackHistory]);
 
   return (
     <div className="absolute inset-0 z-0 bg-black overflow-hidden pointer-events-auto custom-graph-cursor" ref={containerRef}>
