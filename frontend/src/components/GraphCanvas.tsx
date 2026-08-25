@@ -446,7 +446,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     }
     
     ctx.restore();
-  }, [highlightedPathIds, graphData, getNodeSize, selectedNodeId, playbackHistory]);
+  }, [highlightedPathIds, graphData, getNodeSize, selectedNodeId, playbackHistory, manualTargetId]);
 
   const paintPacket = useCallback((ctx: CanvasRenderingContext2D, globalScale: number) => {
     const progress = playbackProgressRef?.current || 0;
@@ -462,15 +462,19 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
         targetId = highlightedPathIds[idx + 1];
       }
     } else {
-      // Discover mode: pick the first out-edge target dynamically respecting history
-      const edges = graphData.links.filter((l: any) => l.source?.id === selectedNodeId || l.source === selectedNodeId);
-      const edge = edges.find((l: any) => {
-        const tid = typeof l.target === 'object' ? l.target.id : l.target;
-        return !playbackHistory.includes(tid);
-      }) || edges[0];
-      
-      if (edge) {
-        targetId = typeof edge.target === 'object' ? edge.target.id : edge.target;
+      // Discover mode: respect manual override, otherwise pick optimal node
+      if (manualTargetId) {
+        targetId = manualTargetId;
+      } else {
+        const edges = graphData.links.filter((l: any) => l.source?.id === selectedNodeId || l.source === selectedNodeId);
+        const edge = edges.find((l: any) => {
+          const tid = typeof l.target === 'object' ? l.target.id : l.target;
+          return !playbackHistory.includes(tid);
+        }) || edges[0];
+        
+        if (edge) {
+          targetId = typeof edge.target === 'object' ? edge.target.id : edge.target;
+        }
       }
     }
 
@@ -529,7 +533,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
       
       ctx.restore();
     }
-  }, [selectedNodeId, highlightedPathIds, graphData, playbackProgressRef, getNodeSize, playbackHistory]);
+  }, [selectedNodeId, highlightedPathIds, graphData, playbackProgressRef, getNodeSize, playbackHistory, manualTargetId]);
 
   const getFramedNodeIds = useCallback((coreIds: string[]) => {
     const framed = new Set<string>(coreIds);
