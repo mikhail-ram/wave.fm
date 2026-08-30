@@ -1,11 +1,18 @@
 import random
 from typing import Dict, List, Optional
 import numpy as np
+from chromadb.api import Collection
 
-def get_single_embedding(collection, doc_id: str) -> Optional[np.ndarray]:
-    """
-    Looks up a single document in the database and returns its mathematical 
-    coordinates (embedding) as a numpy array.
+def get_single_embedding(collection: Collection, doc_id: str) -> Optional[np.ndarray]:
+    """Retrieves the embedding for a single document ID from ChromaDB.
+
+    Args:
+        collection (Collection): The ChromaDB collection to search.
+        doc_id (str): The unique ID of the document to retrieve.
+
+    Returns:
+        Optional[np.ndarray]: The mathematical coordinates of the document as a 
+            numpy array (float), or None if the document is not found.
     """
     resp = collection.get(ids=[doc_id], include=["embeddings"])
     embeddings = resp.get("embeddings", [])
@@ -13,10 +20,16 @@ def get_single_embedding(collection, doc_id: str) -> Optional[np.ndarray]:
         return np.asarray(embeddings[0], dtype=float)
     return None
 
-def query_neighbors(collection, query_embedding: np.ndarray, n: int) -> List[str]:
-    """
-    Finds the IDs of the most similar documents in the database 
-    using nearest-neighbor search.
+def query_neighbors(collection: Collection, query_embedding: np.ndarray, n: int) -> List[str]:
+    """Finds the most similar documents to a given embedding.
+
+    Args:
+        collection (Collection): The ChromaDB collection to query.
+        query_embedding (np.ndarray): The base embedding to compare against.
+        n (int): The number of nearest neighbors to return.
+
+    Returns:
+        List[str]: A list of document IDs ordered by similarity (closest first).
     """
     if query_embedding is None:
         return []
@@ -28,10 +41,16 @@ def query_neighbors(collection, query_embedding: np.ndarray, n: int) -> List[str
     ids_list = resp.get("ids", [[]])
     return ids_list[0] if ids_list else []
 
-def fetch_embeddings_map(collection, ids: List[str]) -> Dict[str, np.ndarray]:
-    """
-    Downloads mathematical coordinates for multiple IDs at once, 
-    returning a dictionary for quick O(1) lookups.
+def fetch_embeddings_map(collection: Collection, ids: List[str]) -> Dict[str, np.ndarray]:
+    """Downloads embeddings for multiple IDs simultaneously.
+
+    Args:
+        collection (Collection): The ChromaDB collection to query.
+        ids (List[str]): A list of document IDs to retrieve embeddings for.
+
+    Returns:
+        Dict[str, np.ndarray]: A dictionary mapping document IDs to their numpy embeddings 
+            for quick O(1) lookups.
     """
     if not ids:
         return {}
@@ -44,16 +63,34 @@ def fetch_embeddings_map(collection, ids: List[str]) -> Dict[str, np.ndarray]:
     }
 
 def dot_product(a: np.ndarray, b: np.ndarray) -> float:
-    """
-    Calculates the cosine similarity (assuming normalized vectors) 
-    between two embeddings via dot product.
+    """Calculates the dot product between two embeddings.
+    
+    If the embeddings are L2 normalized, this is mathematically equivalent 
+    to Cosine Similarity.
+
+    Args:
+        a (np.ndarray): The first embedding vector.
+        b (np.ndarray): The second embedding vector.
+
+    Returns:
+        float: The scalar dot product.
     """
     return float(np.dot(a, b))
 
-def get_nth_id(collection, n: Optional[int] = None) -> str:
-    """
-    Grabs a specific track from the database by its numerical position, 
-    or picks a random track if no number is given.
+def get_nth_id(collection: Collection, n: Optional[int] = None) -> str:
+    """Retrieves a specific document ID by its numerical index, or a random one.
+
+    Args:
+        collection (Collection): The ChromaDB collection to retrieve from.
+        n (Optional[int]): The positional index of the document. If None, 
+            a random index is chosen.
+
+    Raises:
+        IndexError: If the collection is empty or the index is out of bounds.
+        TypeError: If n is provided but is not an integer.
+
+    Returns:
+        str: The ID of the document at position n.
     """
     total = collection.count()
     if total == 0:

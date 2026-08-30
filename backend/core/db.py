@@ -1,4 +1,5 @@
 import chromadb
+from chromadb.api import Collection
 from pathlib import Path
 
 # Base directory for the backend
@@ -15,10 +16,18 @@ client = chromadb.PersistentClient(path=str(PERSIST_DIR))
 audio_collection = client.get_collection(name="tracks")
 text_collection = client.get_collection(name="text_embeddings")
 
-def get_audio_collection():
-    """Returns the ChromaDB collection containing audio embeddings."""
+def get_audio_collection() -> Collection:
+    """Retrieves the ChromaDB collection containing audio embeddings and metadata.
+    
+    Returns:
+        Collection: The ChromaDB collection object for tracks.
+    """
     return audio_collection
 
-def get_text_collection():
-    """Returns the ChromaDB collection containing text (lyrics) embeddings."""
+def get_text_collection() -> Collection:
+    """Retrieves the ChromaDB collection containing text (lyrics) embeddings.
+    
+    Returns:
+        Collection: The ChromaDB collection object for text_embeddings.
+    """
     return text_collection

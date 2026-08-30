@@ -1,20 +1,36 @@
 import heapq
 import numpy as np
-from typing import Dict, List
+from typing import Dict, List, Union
+from chromadb.api import Collection
 
 def interpolate_tracks(
-    audio_collection,
-    text_collection,
+    audio_collection: Collection,
+    text_collection: Collection,
     source_id: str,
     dest_id: str,
     n_steps: int,
     audio_weight: float = 0.5,
-) -> List[Dict]:
-    """
-    Finds a smooth, step-by-step musical journey between two songs using 
-    Geodesic Pathfinding (A* / Dijkstra). It treats the database like a 
-    physical constellation, hopping from neighbor to neighbor to find the 
-    shortest physical path along the existing cluster of songs.
+) -> List[Dict[str, Union[str, float]]]:
+    """Finds a smooth musical journey between two songs using Geodesic Pathfinding.
+    
+    Uses Dijkstra's algorithm (A* variant) to traverse the exact k-NN graph 
+    topology that exists in the frontend. It treats the database like a physical 
+    constellation, hopping from neighbor to neighbor to find the shortest path 
+    between two distant nodes based on a specific Audio/Lyrics blend weight.
+
+    Args:
+        audio_collection (Collection): ChromaDB collection for audio embeddings.
+        text_collection (Collection): ChromaDB collection for text embeddings.
+        source_id (str): The starting node ID.
+        dest_id (str): The destination node ID.
+        n_steps (int): The maximum number of hops allowed in the path. If the 
+            geodesic path is longer, it is linearly downsampled to fit n_steps.
+        audio_weight (float, optional): The blend parameter between audio 
+            and lyrics. Defaults to 0.5.
+
+    Returns:
+        List[Dict[str, Union[str, float]]]: A list of nodes forming the path. 
+            Each step contains 'id' and 'sim_combined' relative to the destination.
     """
     w_audio = float(audio_weight)
     w_text = 1.0 - w_audio

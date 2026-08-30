@@ -1,19 +1,32 @@
 import numpy as np
-from typing import Dict
+from typing import Dict, List, Union
+from chromadb.api import Collection
 
 def generate_graph_data(
-    audio_collection, 
-    text_collection, 
+    audio_collection: Collection, 
+    text_collection: Collection, 
     top_k: int = 5, 
     audio_weight: float = 0.5
-) -> Dict:
-    """
-    Generates the 2D constellation map for the user interface.
+) -> Dict[str, List[Dict[str, Union[str, float]]]]:
+    """Generates the 2D constellation map for the user interface.
     
-    For every song in the database, it finds its Top 5 closest neighbors 
-    using the hybrid audio/lyric coordinates. It returns these connections 
-    as nodes and links so the frontend physics engine can organize them 
-    into clusters.
+    For every song in the database, it finds its Top-K closest neighbors 
+    using the mathematically combined audio/lyric coordinates. It returns 
+    these connections as a JSON-serializable dictionary of nodes and links 
+    so the frontend physics engine can organize them into visual clusters.
+
+    Args:
+        audio_collection (Collection): ChromaDB collection for audio embeddings.
+        text_collection (Collection): ChromaDB collection for text embeddings.
+        top_k (int, optional): Number of nearest neighbors to connect to each node. 
+            Defaults to 5.
+        audio_weight (float, optional): The blend parameter between audio 
+            and lyrics. Defaults to 0.5.
+
+    Returns:
+        Dict[str, List[Dict]]: A dictionary containing:
+            - 'nodes': List of node dictionaries (id, title, artist, videoId).
+            - 'links': List of edge dictionaries (source, target, score).
     """
     total = audio_collection.count()
     if total == 0:

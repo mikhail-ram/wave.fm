@@ -1,5 +1,6 @@
 import numpy as np
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Union
+from chromadb.api import Collection
 
 from .utils import (
     get_single_embedding,
@@ -9,24 +10,43 @@ from .utils import (
 )
 
 def recommend_similar_tracks(
-    audio_collection,
-    text_collection,
+    audio_collection: Collection,
+    text_collection: Collection,
     query_id: str,
     candidate_n: int = 50,
     top_k: int = 3,
     audio_weight: float = 0.5,
-    history: List[str] = None
-) -> List[Dict[str, float]]:
-    """
-    Finds the most similar songs using an "Early Fusion" algorithm.
+    history: Optional[List[str]] = None
+) -> List[Dict[str, Union[str, float]]]:
+    """Finds the most similar songs using an 'Early Fusion' mathematical algorithm.
+    
     Mathematically combines audio and lyric coordinates into a single hybrid 
-    coordinate, then finds the closest songs to that hybrid coordinate.
+    coordinate space, then finds the closest songs to that hybrid coordinate 
+    using nearest-neighbor search.
     
     If 'history' is provided, skips any candidate IDs that exist in the history 
-    array to prevent "Ping-Pong" loops during autoplay.
+    array to prevent "Ping-Pong" loops during the continuous 'Discover Mode' autoplay.
     
-    Returns a list of dictionaries with keys:
-    'id', 'sim_combined', 'sim_audio', 'sim_text'
+    Args:
+        audio_collection (Collection): ChromaDB collection for audio embeddings.
+        text_collection (Collection): ChromaDB collection for text embeddings.
+        query_id (str): The ID of the currently playing song to find neighbors for.
+        candidate_n (int, optional): Number of fast nearest-neighbor candidates 
+            to retrieve from ChromaDB before performing exact fusion. Defaults to 50.
+        top_k (int, optional): The final number of exact nearest neighbors to return. 
+            Defaults to 3.
+        audio_weight (float, optional): The alpha parameter controlling the blend 
+            between Audio (alpha) and Lyrics (1 - alpha). Defaults to 0.5.
+        history (Optional[List[str]], optional): List of already visited node IDs. 
+            Defaults to None.
+
+    Raises:
+        ValueError: If query_id is not provided or not found in the database.
+
+    Returns:
+        List[Dict[str, Union[str, float]]]: A list of dictionaries representing 
+            the top_k neighbors. Each dict contains keys: 
+            'id', 'sim_combined', 'sim_audio', 'sim_text'.
     """
     if not query_id:
         raise ValueError("query_id must be provided")
