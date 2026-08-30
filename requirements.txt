@@ -7,3 +7,7 @@ tqdm
 fastapi
 uvicorn[standard]
 pydantic
+librosa
+muq
+transformers
+sentencepiece

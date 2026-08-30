@@ -209,5 +209,39 @@ def get_graph(audio_weight: float = 0.5):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/capitals")
+def get_capitals():
+    """
+    API Endpoint: Returns the Top 100 Capital Cities for the Expeditions Game.
+    Reads from the pre-computed capital_cities.json.
+    """
+    try:
+        from pathlib import Path
+        import os
+        base_dir = Path(__file__).resolve().parent
+        capitals_file = base_dir / "db" / "capital_cities.json"
+        
+        if not capitals_file.exists():
+            return {"capitals": []}
+            
+        with open(capitals_file, "r", encoding="utf-8") as f:
+            capitals = json.load(f)
+            
+        # Format for frontend response
+        formatted_capitals = []
+        for city in capitals:
+            formatted_capitals.append({
+                "id": city["id"],
+                "videoId": city["id"].replace("yt:", ""),
+                "title": city["title"],
+                "artist": city["artist"],
+                "rank": city["rank"],
+                "in_degree": city["in_degree"]
+            })
+            
+        return {"capitals": formatted_capitals}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
