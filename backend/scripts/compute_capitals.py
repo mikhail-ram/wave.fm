@@ -30,7 +30,7 @@ def compute_in_degrees(k: int = 10, top_n: int = 100, audio_weight: float = 0.5)
     metadatas = audio_data["metadatas"]
     
     # 2. Fetch lyrics embeddings corresponding to these IDs
-    text_data = text_col.get(ids=ids, include=["embeddings"])
+    text_data = text_col.get(include=["embeddings"])
     text_emb_map = {
         i: e for i, e in zip(text_data.get("ids", []), text_data.get("embeddings", []))
     }

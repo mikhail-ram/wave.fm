@@ -4,3 +4,6 @@ backend/db/
 venv/
 __pycache__/
 .pytest_cache/
+
+cookies.txt
+backend/tmp_audio/

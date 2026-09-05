@@ -37,7 +37,7 @@ def generate_graph_data(
     audio_embeddings = resp.get("embeddings", [])
     metadatas = resp.get("metadatas", [])
     
-    text_resp = text_collection.get(ids=ids, include=["embeddings"])
+    text_resp = text_collection.get(include=["embeddings"])
     text_emb_map = {
         i: e for i, e in zip(text_resp.get("ids", []), text_resp.get("embeddings", []))
     }
