@@ -1,5 +1,6 @@
 # wave.fm
 
+![wave.fm interface](screenshots/main.jpeg)
 wave.fm is a spatial music exploration tool. It visualizes your music library as an interactive 2D graph, mapping relationships between songs based on their sonic properties and lyrical themes. 
 
 Rather than relying on human-curated playlists or basic metadata, wave.fm uses machine learning to construct a navigable universe of sound, allowing both casual listeners and active users to traverse genres smoothly.
