@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 import { GraphNode, GraphLink } from '../types';
+import { calculatePerimeterTrace } from '../lib/canvasMath';
 
 interface GraphCanvasProps {
   graphData: { nodes: GraphNode[]; links: GraphLink[] };
@@ -18,6 +19,8 @@ interface GraphCanvasProps {
   inspectedNodeId?: string | null;
   isJourneyLocked?: boolean;
   onBackgroundClick?: () => void;
+  previewNodeId?: string | null;
+  previewProgressRef?: React.MutableRefObject<number>;
 }
 
 export const GraphCanvas: React.FC<GraphCanvasProps> = ({
@@ -35,6 +38,8 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   inspectedNodeId = null,
   isJourneyLocked = false,
   onBackgroundClick,
+  previewNodeId = null,
+  previewProgressRef,
 }) => {
   const fgRef = useRef<any>();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -325,6 +330,24 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     ctx.fillStyle = '#000000';
     ctx.fill();
     ctx.stroke();
+
+    // Trace Perimeter Progress if it's the preview node
+    if (node.id === previewNodeId && previewProgressRef) {
+      const pProgress = previewProgressRef.current || 0;
+      if (pProgress > 0) {
+        const tracePoints = calculatePerimeterTrace(pProgress, size, node.x, node.y);
+        if (tracePoints.length > 1) {
+          ctx.beginPath();
+          ctx.moveTo(tracePoints[0].x, tracePoints[0].y);
+          for (let i = 1; i < tracePoints.length; i++) {
+            ctx.lineTo(tracePoints[i].x, tracePoints[i].y);
+          }
+          ctx.strokeStyle = '#aaaaaa'; // Grey stroke for preview
+          ctx.lineWidth = 2.0 / globalScale;
+          ctx.stroke();
+        }
+      }
+    }
     
     // If it's a key node (active or source), fill it and glow
     if (isSelected || isSource) {
@@ -384,7 +407,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
 
     
     ctx.restore();
-  }, [selectedNodeId, sourceNodeId, destNodeId, highlightedPathIds, hoverNode, activeDegrees, getNodeSize]);
+  }, [selectedNodeId, sourceNodeId, destNodeId, highlightedPathIds, hoverNode, activeDegrees, getNodeSize, previewNodeId, previewProgressRef]);
 
   const paintPointerArea = useCallback((node: any, color: string, ctx: CanvasRenderingContext2D) => {
     const degree = activeDegrees.get(node.id) || 0;

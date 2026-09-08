@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { CurrentTrack } from "@/components/CurrentTrack";
 import { GraphCanvas } from "@/components/GraphCanvas";
+import { ContextPanel } from "@/components/ContextPanel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,7 @@ import YouTube from 'react-youtube';
 const Index = () => {
   const [audioLyricsValue, setAudioLyricsValue] = useState([50]);
   const [committedAudioWeight, setCommittedAudioWeight] = useState(0.5);
-  const [activeTab, setActiveTab] = useState<"discover" | "interpolate">("discover");
+  const [activeTab, setActiveTab] = useState<"discover" | "interpolate" | "expedition">("discover");
   
   const [currentTrack, setCurrentTrack] = useState({
     id: "",
@@ -25,6 +26,7 @@ const Index = () => {
   const [playbackHistory, setPlaybackHistory] = useState<string[]>([]);
   const playbackProgressRef = useRef(0);
   const progressBarRef = useRef<HTMLDivElement>(null);
+  const [trackDuration, setTrackDuration] = useState(0);
 
   // Poll YouTube progress without re-rendering React tree
   useEffect(() => {
@@ -32,9 +34,13 @@ const Index = () => {
     if (isPlaying && player) {
       interval = setInterval(async () => {
         try {
+          const state = await player.getPlayerState();
+          if (state !== 1) return; // 1 = PLAYING. Skip if buffering (3) or paused (2)
+          
           const currentTime = await player.getCurrentTime();
           const duration = await player.getDuration();
           if (duration > 0) {
+            if (duration !== trackDuration) setTrackDuration(duration);
             const progress = currentTime / duration;
             playbackProgressRef.current = progress;
             if (progressBarRef.current) {
@@ -45,7 +51,7 @@ const Index = () => {
       }, 100); // 100ms is fine now since it doesn't trigger React updates
     }
     return () => clearInterval(interval);
-  }, [isPlaying, player]);
+  }, [isPlaying, player, trackDuration]);
 
   // Graph state
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
@@ -69,6 +75,20 @@ const Index = () => {
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const [liveWeight, setLiveWeight] = useState(0.5);
   const isJourneyLocked = journeyState === "LOCKED";
+  
+  // Expedition State
+  const [beacons, setBeacons] = useState<any[]>([]);
+  const [expeditionTargetId, setExpeditionTargetId] = useState<string | null>(null);
+  const [expeditionParScore, setExpeditionParScore] = useState<number | null>(null);
+  const [isGeneratingMission, setIsGeneratingMission] = useState(false);
+  
+  // Fetch beacons on mount
+  useEffect(() => {
+    fetch('http://localhost:8000/api/capitals')
+      .then(res => res.json())
+      .then(data => setBeacons(data.capitals || []))
+      .catch(err => console.error("Failed to load beacons", err));
+  }, []);
 
   // Debounce the live slider value to avoid flooding the backend
   useEffect(() => {
@@ -177,7 +197,72 @@ const Index = () => {
     return () => clearTimeout(delayDebounceFn);
   }, [activeSearchQuery, interpolateFocusMode]);
 
+  // Preview / Context Drawer State
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [previewNodeId, setPreviewNodeId] = useState<string | null>(null);
+  const [previewTrack, setPreviewTrack] = useState<{id: string, title: string, artist: string, videoId: string} | null>(null);
+  const [previewPlayer, setPreviewPlayer] = useState<any | null>(null);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const previewProgressRef = useRef(0);
+  const [previewDuration, setPreviewDuration] = useState(0);
+
+  // Poll preview YouTube progress
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isPreviewPlaying && previewPlayer) {
+      interval = setInterval(async () => {
+        try {
+          const state = await previewPlayer.getPlayerState();
+          if (state !== 1) return;
+          
+          const currentTime = await previewPlayer.getCurrentTime();
+          const duration = await previewPlayer.getDuration();
+          if (duration > 0) {
+            if (duration !== previewDuration) setPreviewDuration(duration);
+            const progress = currentTime / duration;
+            previewProgressRef.current = progress;
+          }
+        } catch (e) {}
+      }, 200);
+    }
+    return () => clearInterval(interval);
+  }, [isPreviewPlaying, previewPlayer, previewDuration]);
+
+  const generateMission = async () => {
+    if (beacons.length === 0) return;
+    setIsGeneratingMission(true);
+    
+    // Pick a random beacon that isn't the current one
+    const otherBeacons = beacons.filter(b => b.id !== currentTrack.id);
+    const target = otherBeacons[Math.floor(Math.random() * otherBeacons.length)];
+    
+    try {
+      const res = await fetch(`http://localhost:8000/api/route?start=${currentTrack.id}&end=${target.id}`);
+      const data = await res.json();
+      setExpeditionTargetId(target.id);
+      setExpeditionParScore(data.par_score);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsGeneratingMission(false);
+    }
+  };
+
+  const jumpToNearestBeacon = () => {
+    if (beacons.length > 0) {
+      const topBeacon = beacons[0]; // For now, just jump to the highest rank beacon
+      const node = graphData.nodes.find((n: any) => n.id === topBeacon.id);
+      if (node) executeJump(node);
+    }
+  };
+
   const executeJump = (node: any) => {
+    // If we jump, stop previewing and close drawer
+    setIsDrawerOpen(false);
+    setPreviewNodeId(null);
+    if (previewPlayer) previewPlayer.pauseVideo();
+    setIsPreviewPlaying(false);
+
     setManualTargetId(null);
     setInspectedNodeId(null);
     setAutoPlayNext(true);
@@ -236,6 +321,17 @@ const Index = () => {
         return (sid === currentTrack.id && tid === node.id) || (tid === currentTrack.id && sid === node.id);
       });
 
+      // Set preview state for Drawer
+      setPreviewNodeId(node.id);
+      setPreviewTrack({ id: node.id, title: node.title, artist: node.artist, videoId: node.videoId });
+      setIsDrawerOpen(true);
+      previewProgressRef.current = 0;
+      if (previewPlayer) {
+        previewPlayer.pauseVideo();
+        previewPlayer.seekTo(0);
+      }
+      setIsPreviewPlaying(false);
+
       if (activeTab === "discover") {
         setInspectedNodeId(node.id);
         if (isNeighbor) {
@@ -279,9 +375,13 @@ const Index = () => {
         manualTargetId={manualTargetId}
         inspectedNodeId={inspectedNodeId}
         isJourneyLocked={journeyState === "LOCKED"}
+        previewNodeId={previewNodeId}
+        previewProgressRef={previewProgressRef}
         onBackgroundClick={() => {
           setManualTargetId(null);
           setInspectedNodeId(null);
+          setIsDrawerOpen(false);
+          if (previewPlayer) previewPlayer.pauseVideo();
         }}
       />
 
@@ -294,9 +394,9 @@ const Index = () => {
           <h1 className="text-4xl font-black tracking-tighter uppercase mb-6" style={{ fontFamily: 'monospace', letterSpacing: '-0.05em' }}>
             WAVE<span className="text-white/50">.FM</span>
           </h1>
-          <div className="flex gap-2 border-t-2 border-white pt-4">
+          <div className="flex gap-1 border-t-2 border-white pt-4">
             <button 
-              className={`flex-1 py-2 text-xs font-bold tracking-widest uppercase border-2 transition-all ${activeTab === 'discover' ? 'bg-white text-black border-white' : 'text-white border-transparent hover:border-white/50'}`}
+              className={`flex-1 py-2 text-[10px] font-bold tracking-widest uppercase border-2 transition-all ${activeTab === 'discover' ? 'bg-white text-black border-white' : 'text-white border-transparent hover:border-white/50'}`}
               onClick={() => {
                 setActiveTab('discover');
                 setDestTrackId("");
@@ -311,7 +411,7 @@ const Index = () => {
               DISCOVER
             </button>
             <button 
-              className={`flex-1 py-2 text-xs font-bold tracking-widest uppercase border-2 transition-all ${activeTab === 'interpolate' ? 'bg-white text-black border-white' : 'text-white border-transparent hover:border-white/50'}`}
+              className={`flex-1 py-2 text-[10px] font-bold tracking-widest uppercase border-2 transition-all ${activeTab === 'interpolate' ? 'bg-white text-black border-white' : 'text-white border-transparent hover:border-white/50'}`}
               onClick={() => {
                 setActiveTab('interpolate');
                 setSourceTrackId(currentTrack.id);
@@ -325,7 +425,22 @@ const Index = () => {
               }}
               style={{ fontFamily: 'monospace' }}
             >
-              INTERPOLATE
+              ROUTE
+            </button>
+            <button 
+              className={`flex-1 py-2 text-[10px] font-bold tracking-widest uppercase border-2 transition-all ${activeTab === 'expedition' ? 'bg-white text-black border-white' : 'text-white border-transparent hover:border-white/50'}`}
+              onClick={() => {
+                setActiveTab('expedition');
+                setDestTrackId("");
+                setDestSearchQuery("");
+                setHighlightedPathIds([]);
+                setJourneyState("IDLE");
+                setManualTargetId(null);
+                setInspectedNodeId(null);
+              }}
+              style={{ fontFamily: 'monospace' }}
+            >
+              EXPEDITION
             </button>
           </div>
         </div>
@@ -514,165 +629,230 @@ const Index = () => {
                             </div>
           </div>
         )}
-
-        {/* Global Controls - Gravity Slider */}
-        <div className="bg-black border-2 border-white p-6 relative overflow-hidden">
-          {isJourneyLocked && (
-            <div className="absolute inset-0 z-10 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center">
-              <span className="text-[10px] font-mono tracking-widest uppercase text-white animate-pulse mb-1">[ LATENT_SPACE_LOCKED ]</span>
-              <span className="text-[8px] font-mono tracking-widest uppercase text-white/50 text-center">FINISH OR ABORT EXPEDITION<br/>TO UNLOCK</span>
-            </div>
-          )}
-          <div className={`transition-opacity duration-300 ${isJourneyLocked ? 'opacity-30' : 'opacity-100'}`}>
-            <div className="absolute top-1 right-2 text-[8px] font-mono text-white/50">+++ SYS.03</div>
-            <Label className="text-[10px] tracking-widest uppercase text-white font-bold mb-4 block" style={{ fontFamily: 'monospace' }}>GRAVITY_MODIFIER [AUDIO:LYRICS]</Label>
-            <div className="pt-2">
-              <Slider
-                min={0}
-                max={100}
-                step={1}
-                value={audioLyricsValue}
-                onValueChange={(val) => {
-                  if (!isJourneyLocked) {
-                    setAudioLyricsValue(val);
-                    setLiveWeight(val[0] / 100);
-                  }
-                }}
-                onValueCommit={(val) => {
-                  if (!isJourneyLocked) setCommittedAudioWeight(val[0] / 100);
-                }}
-                className={`w-full ${isJourneyLocked ? 'pointer-events-none' : ''}`}
-                disabled={isJourneyLocked}
-              />
-            </div>
-            <div className="flex justify-between text-[10px] tracking-widest uppercase text-white font-mono mt-4">
-              <span>[AUDIO]</span>
-              <span>[LYRIC]</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Floating HUD - Bottom Center - Player */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 w-[400px]">
-        <div className="bg-black border-2 border-white p-4 relative">
-          <div className="absolute top-1 left-2 text-[8px] font-mono text-white/50">+++ TX.OUT</div>
-          <div className="text-[10px] tracking-widest uppercase text-white font-bold mb-3 text-center cyber-flicker" style={{ fontFamily: 'monospace' }}>
-            NOW_TRANSMITTING <span className="animate-pulse">_</span>
-          </div>
-          {currentTrack.videoId ? (
-            <div className="border-2 border-white pointer-events-auto p-4 flex flex-col gap-4">
-              <div className="flex justify-between items-center pb-3">
-                <div className="flex-1 min-w-0 pr-4">
-                  <div className="font-bold text-xs truncate uppercase text-white font-mono">{currentTrack.title}</div>
-                  <div className="text-[10px] tracking-widest text-white/50 truncate uppercase font-mono mt-1">{currentTrack.artist}</div>
-                </div>
-                <div className="text-[10px] font-mono whitespace-nowrap text-white/80">
-                  {isPlaying ? '[ PLAYING ]' : '[ PAUSED ]'}
-                </div>
-              </div>
+        
+        {activeTab === "expedition" && (
+          <div className="bg-black border-2 border-white p-6 relative">
+            <div className="absolute top-1 right-2 text-[8px] font-mono text-white/50">+++ SYS.04</div>
+            
+            {(() => {
+              const isDocked = beacons.some(b => b.id === currentTrack.id);
               
-              <div className="h-0.5 bg-white/20 w-full relative -mt-2 mb-1">
-                <div 
-                  ref={progressBarRef}
-                  className="absolute top-0 left-0 h-full bg-white transition-all duration-100 ease-linear"
-                  style={{ width: '0%' }}
-                ></div>
-              </div>
-              
-              <div className="flex justify-between gap-2">
-                <button 
-                  className={`flex-1 py-2 border-2 border-white font-bold tracking-widest text-xs uppercase font-mono transition-colors ${isPlaying ? 'bg-white text-black' : 'bg-black text-white hover:bg-white/10'}`}
-                  onClick={() => {
-                    if (isPlaying) {
-                      player?.pauseVideo();
-                    } else {
-                      player?.playVideo();
-                    }
-                  }}
-                >
-                  {isPlaying ? 'PAUSE' : 'PLAY'}
-                </button>
-              </div>
-
-              {activeTab === "discover" && (
-                <div className="flex justify-between items-center pt-2 border-t border-white/20">
-                  <div className="text-[8px] tracking-widest text-white/50 uppercase font-mono">
-                    {manualTargetId 
-                      ? "AUTOPILOT: MANUAL OVERRIDE" 
-                      : "AUTOPILOT: SEEKING OPTIMAL MATCH"
-                    }
-                  </div>
-                  {manualTargetId && (
-                    <button 
-                      onClick={() => setManualTargetId(null)}
-                      className="text-[8px] text-red-400 hover:text-red-300 font-mono tracking-widest border border-red-500/30 px-2 py-1 transition-colors"
+              if (!isDocked) {
+                return (
+                  <div className="space-y-6">
+                    <Label className="text-[10px] tracking-widest uppercase font-bold text-red-500 block animate-pulse" style={{ fontFamily: 'monospace' }}>
+                      [ ERROR: OUT OF RANGE ]
+                    </Label>
+                    <div className="text-[10px] text-white/70 font-mono">
+                      MUST BE DOCKED AT A BEACON TO INITIATE EXPEDITION.
+                    </div>
+                    <Button 
+                      className="w-full bg-white text-black hover:bg-white/80 rounded-none font-bold tracking-widest text-[10px]"
+                      onClick={jumpToNearestBeacon}
+                      style={{ fontFamily: 'monospace' }}
                     >
-                      [ CLEAR ]
-                    </button>
-                  )}
+                      JUMP TO NEAREST BEACON
+                    </Button>
+                  </div>
+                );
+              }
+              
+              if (!expeditionTargetId) {
+                return (
+                  <div className="space-y-6">
+                    <Label className="text-[10px] tracking-widest uppercase font-bold text-green-400 block" style={{ fontFamily: 'monospace' }}>
+                      [ DOCKED AT BEACON ]
+                    </Label>
+                    <Button 
+                      className="w-full bg-red-600 text-white hover:bg-red-700 rounded-none font-bold tracking-widest text-[10px]"
+                      onClick={generateMission}
+                      disabled={isGeneratingMission}
+                      style={{ fontFamily: 'monospace' }}
+                    >
+                      {isGeneratingMission ? "SCANNING..." : "SCAN FOR ANOMALIES"}
+                    </Button>
+                  </div>
+                );
+              }
+              
+              const targetBeacon = beacons.find(b => b.id === expeditionTargetId);
+              return (
+                <div className="space-y-4">
+                  <Label className="text-[10px] tracking-widest uppercase font-bold text-red-500 block animate-pulse" style={{ fontFamily: 'monospace' }}>
+                    [ ANOMALY DETECTED ]
+                  </Label>
+                  <div className="text-[10px] text-white font-mono border border-white/30 p-2">
+                    <div className="text-white/50 mb-1">TARGET_SIGNAL:</div>
+                    <div className="truncate">{targetBeacon?.title}</div>
+                    <div className="text-white/50 truncate">{"// " + targetBeacon?.artist}</div>
+                    <div className="mt-3 text-white/50">OPTIMAL_PATH:</div>
+                    <div className="text-green-400">[{expeditionParScore} HOPS]</div>
+                  </div>
+                  <Button 
+                    className="w-full bg-white text-black hover:bg-white/80 rounded-none font-bold tracking-widest text-[10px]"
+                    onClick={() => setExpeditionTargetId(null)}
+                    style={{ fontFamily: 'monospace' }}
+                  >
+                    ABORT EXPEDITION
+                  </Button>
                 </div>
-              )}
-
-              {/* Hidden YouTube Player to drive audio */}
-              <div className="hidden">
-                <YouTube
-                  videoId={currentTrack.videoId}
-                  opts={{ width: '0', height: '0', playerVars: { autoplay: autoPlayNext ? 1 : 0 } }}
-                  onReady={(e) => setPlayer(e.target)}
-                  onStateChange={(e) => {
-                    setIsPlaying(e.data === 1);
-                    if (e.data === 0) { // ENDED
-                      setAutoPlayNext(true);
-                      // Auto-play next logic
-                      if (activeTab === "discover" || (activeTab === "interpolate" && journeyState !== "LOCKED")) {
-                        const currentId = currentTrack.id;
-                        // Find the first edge that is NOT in history
-                        const edges = graphData.links.filter((l: any) => 
-                          (l.source?.id || l.source) === currentId
-                        );
-                        let nextEdge = edges.find((l: any) => {
-                          const tid = typeof l.target === 'object' ? l.target.id : l.target;
-                          return !playbackHistory.includes(tid);
-                        });
-                        
-                        // Fallback to absolute closest if history exhausts all 5 edges
-                        if (!nextEdge && edges.length > 0) nextEdge = edges[0];
-                        
-                        if (nextEdge) {
-                          const targetId = typeof nextEdge.target === 'object' ? nextEdge.target.id : nextEdge.target;
-                          let actualTargetId = targetId;
-                          if (manualTargetId) {
-                            actualTargetId = manualTargetId;
-                            setManualTargetId(null);
-                          }
-                          const targetNode = graphData.nodes.find((n: any) => n.id === actualTargetId);
-                          if (targetNode) {
-                            executeJump(targetNode);
-                          }
-                        }
-                      } else if (activeTab === "interpolate" && journeyState === "LOCKED") {
-                         const idx = highlightedPathIds.indexOf(currentTrack.id);
-                         if (idx !== -1 && idx < highlightedPathIds.length - 1) {
-                           const targetId = highlightedPathIds[idx + 1];
-                           const targetNode = graphData.nodes.find((n: any) => n.id === targetId) || ghostNodes.find(n => n.id === targetId);
-                           if (targetNode) {
-                             executeJump(targetNode);
-                           }
-                         }
-                      }
+              );
+            })()}
+          </div>
+        )}
+        
+        {/* Global Controls - Gravity Slider */}
+        {activeTab !== "expedition" && (
+          <div className="bg-black border-2 border-white p-6 relative overflow-hidden">
+            {isJourneyLocked && (
+              <div className="absolute inset-0 z-10 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center">
+                <span className="text-[10px] font-mono tracking-widest uppercase text-white animate-pulse mb-1">[ LATENT_SPACE_LOCKED ]</span>
+                <span className="text-[8px] font-mono tracking-widest uppercase text-white/50 text-center">FINISH OR ABORT EXPEDITION<br/>TO UNLOCK</span>
+              </div>
+            )}
+            <div className={`transition-opacity duration-300 ${isJourneyLocked ? 'opacity-30' : 'opacity-100'}`}>
+              <div className="absolute top-1 right-2 text-[8px] font-mono text-white/50">+++ SYS.03</div>
+              <Label className="text-[10px] tracking-widest uppercase text-white font-bold mb-4 block" style={{ fontFamily: 'monospace' }}>GRAVITY_MODIFIER [AUDIO:LYRICS]</Label>
+              <div className="pt-2">
+                <Slider
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={audioLyricsValue}
+                  onValueChange={(val) => {
+                    if (!isJourneyLocked) {
+                      setAudioLyricsValue(val);
+                      setLiveWeight(val[0] / 100);
                     }
                   }}
+                  onValueCommit={(val) => {
+                    if (!isJourneyLocked) setCommittedAudioWeight(val[0] / 100);
+                  }}
+                  className={`w-full ${isJourneyLocked ? 'pointer-events-none' : ''}`}
+                  disabled={isJourneyLocked}
                 />
               </div>
+              <div className="flex justify-between text-[10px] tracking-widest uppercase text-white font-mono mt-4">
+                <span>[AUDIO]</span>
+                <span>[LYRIC]</span>
+              </div>
             </div>
-          ) : (
-            <div className="h-[100px] flex items-center justify-center border-2 border-white border-dashed bg-black">
-              <span className="text-white text-xs tracking-widest uppercase font-mono">NO_SIGNAL_DETECTED</span>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
+
+      {/* Main & Preview YouTube Players (Hidden) */}
+      <div className="hidden">
+        {currentTrack.videoId && (
+          <YouTube
+            videoId={currentTrack.videoId}
+            opts={{ width: '0', height: '0', playerVars: { autoplay: autoPlayNext ? 1 : 0 } }}
+            onReady={(e) => setPlayer(e.target)}
+            onStateChange={(e) => {
+              setIsPlaying(e.data === 1);
+              if (e.data === 0) { // ENDED
+                setAutoPlayNext(true);
+                // Auto-play next logic
+                if (activeTab === "discover" || (activeTab === "interpolate" && journeyState !== "LOCKED")) {
+                  const currentId = currentTrack.id;
+                  const edges = graphData.links.filter((l: any) => 
+                    (l.source?.id || l.source) === currentId
+                  );
+                  let nextEdge = edges.find((l: any) => {
+                    const tid = typeof l.target === 'object' ? l.target.id : l.target;
+                    return !playbackHistory.includes(tid);
+                  });
+                  if (!nextEdge && edges.length > 0) nextEdge = edges[0];
+                  
+                  if (nextEdge) {
+                    const targetId = typeof nextEdge.target === 'object' ? nextEdge.target.id : nextEdge.target;
+                    let actualTargetId = targetId;
+                    if (manualTargetId) {
+                      actualTargetId = manualTargetId;
+                      setManualTargetId(null);
+                    }
+                    const targetNode = graphData.nodes.find((n: any) => n.id === actualTargetId);
+                    if (targetNode) executeJump(targetNode);
+                  }
+                } else if (activeTab === "interpolate" && journeyState === "LOCKED") {
+                   const idx = highlightedPathIds.indexOf(currentTrack.id);
+                   if (idx !== -1 && idx < highlightedPathIds.length - 1) {
+                     const targetId = highlightedPathIds[idx + 1];
+                     const targetNode = graphData.nodes.find((n: any) => n.id === targetId) || ghostNodes.find(n => n.id === targetId);
+                     if (targetNode) executeJump(targetNode);
+                   }
+                }
+              }
+            }}
+          />
+        )}
+        {previewTrack?.videoId && (
+          <YouTube
+            videoId={previewTrack.videoId}
+            opts={{ width: '0', height: '0', playerVars: { autoplay: 0 } }}
+            onReady={(e) => setPreviewPlayer(e.target)}
+            onStateChange={(e) => {
+              setIsPreviewPlaying(e.data === 1);
+            }}
+          />
+        )}
+      </div>
+      
+      {/* Unified Context Panel */}
+      <ContextPanel 
+        currentTrack={currentTrack}
+        previewTrack={previewNodeId ? previewTrack : null}
+        previewProgressRef={previewProgressRef}
+        playbackProgressRef={playbackProgressRef}
+        trackDuration={trackDuration}
+        previewDuration={previewDuration}
+        isPlaying={isPlaying}
+        isPreviewPlaying={isPreviewPlaying}
+        onScrub={(prog, isPreview) => {
+          const targetPlayer = isPreview ? previewPlayer : player;
+          if (targetPlayer) {
+            const dur = targetPlayer.getDuration();
+            if (dur > 0) {
+              targetPlayer.seekTo(prog * dur);
+              // Eagerly update ref so UI doesn't jump back while buffering
+              if (isPreview) previewProgressRef.current = prog;
+              else playbackProgressRef.current = prog;
+            }
+          }
+        }}
+        onPlayToggle={(isPreview) => {
+          if (isPreview) {
+            if (isPreviewPlaying) {
+              previewPlayer?.pauseVideo();
+            } else {
+              if (player) player.pauseVideo(); // Pause main audio when playing preview!
+              previewPlayer?.playVideo();
+            }
+            setIsPreviewPlaying(!isPreviewPlaying);
+          } else {
+            if (isPlaying) player?.pauseVideo();
+            else player?.playVideo();
+            setIsPlaying(!isPlaying);
+          }
+        }}
+        onClosePreview={() => {
+          setPreviewNodeId(null);
+          if (previewPlayer) previewPlayer.pauseVideo();
+          setIsPreviewPlaying(false);
+          // Optional: handle closing the drawer entirely if needed, 
+          // but now ContextPanel just falls back to MAIN tab.
+        }}
+        onInitiateJump={(nodeId) => {
+          // Find node in graphData
+          const targetNode = graphData.nodes.find((n: any) => n.id === nodeId);
+          if (targetNode) {
+            executeJump(targetNode);
+          }
+        }}
+        manualTargetId={manualTargetId}
+        onClearManualTarget={() => setManualTargetId(null)}
+      />
+      
       <div className="crt absolute inset-0 z-[100] pointer-events-none"></div>
     </div>
   );

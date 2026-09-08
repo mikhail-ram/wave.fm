@@ -243,5 +243,106 @@ def get_capitals():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/route")
+def get_route(start: str, end: str):
+    """
+    API Endpoint: Runs Breadth-First-Search (BFS) on the 0.5-weight graph
+    to find the shortest path (Par Score) between two nodes.
+    """
+    try:
+        from collections import deque
+        
+        # 1. Get or generate the graph (using 0.5 balanced weight)
+        weight_key = 0.5
+        if weight_key not in graph_cache:
+            graph_cache[weight_key] = generate_graph_data(
+                audio_collection, 
+                text_collection, 
+                top_k=5, 
+                audio_weight=weight_key
+            )
+        graph = graph_cache[weight_key]
+        
+        # 2. Build adjacency list
+        adj_list = {}
+        for link in graph["links"]:
+            src = link["source"]["id"] if isinstance(link["source"], dict) else link["source"]
+            tgt = link["target"]["id"] if isinstance(link["target"], dict) else link["target"]
+            if src not in adj_list:
+                adj_list[src] = []
+            adj_list[src].append(tgt)
+            
+        # 3. BFS
+        if start not in adj_list and start not in [n["id"] for n in graph["nodes"]]:
+            raise HTTPException(status_code=404, detail="Start node not found in graph.")
+        if end not in adj_list and end not in [n["id"] for n in graph["nodes"]]:
+            raise HTTPException(status_code=404, detail="End node not found in graph.")
+            
+        queue = deque([(start, [start])])
+        visited = set([start])
+        
+        while queue:
+            current, path = queue.popleft()
+            
+            if current == end:
+                return {
+                    "path": path,
+                    "par_score": len(path) - 1
+                }
+                
+            for neighbor in adj_list.get(current, []):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append((neighbor, path + [neighbor]))
+                    
+        return {"path": [], "par_score": -1} # No path found
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/track/{track_id}")
+def get_track_details(track_id: str):
+    """
+    API Endpoint: Returns full track details including lyrics.
+    """
+    try:
+        # Fetch metadata from audio collection
+        audio_resp = audio_collection.get(ids=[track_id], include=["metadatas"])
+        if not audio_resp or not audio_resp.get("ids") or len(audio_resp["ids"]) == 0:
+            raise HTTPException(status_code=404, detail="Track not found")
+            
+        metadata = audio_resp["metadatas"][0]
+        title = metadata.get("title", "Unknown")
+        artist = metadata.get("artist", "Unknown")
+        
+        lyrics = "No lyrics available."
+        
+        # Read from ingestion_ledger.json
+        from pathlib import Path
+        import json
+        ledger_path = Path(__file__).resolve().parent / "db" / "ingestion_ledger.json"
+        
+        if ledger_path.exists():
+            with open(ledger_path, "r", encoding="utf-8") as f:
+                ledger = json.load(f)
+            
+            # Find the track in ledger by matching song_id
+            for key, data in ledger.items():
+                if data.get("song_id") == track_id:
+                    if "lyrics_text" in data and data["lyrics_text"]:
+                        lyrics = data["lyrics_text"]
+                    break
+                
+        return {
+            "id": track_id,
+            "title": title,
+            "artist": artist,
+            "videoId": metadata.get("videoId", ""),
+            "lyrics": lyrics
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)

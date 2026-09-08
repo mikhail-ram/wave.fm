@@ -7,3 +7,4 @@ __pycache__/
 
 cookies.txt
 backend/tmp_audio/
+node_modules/
