@@ -8,8 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import YouTube from 'react-youtube';
 
+const YOUTUBE_POLL_INTERVAL_MS = 100;
+const PREVIEW_POLL_INTERVAL_MS = 200;
+const SLIDER_DEBOUNCE_MS = 150;
+const SEARCH_DEBOUNCE_MS = 300;
+const MAX_SLIDER_VALUE = 100;
+
 const Index = () => {
-  const [audioLyricsValue, setAudioLyricsValue] = useState([50]);
+  const [audioLyricsValue, setAudioLyricsValue] = useState([MAX_SLIDER_VALUE / 2]);
   const [committedAudioWeight, setCommittedAudioWeight] = useState(0.5);
   const [activeTab, setActiveTab] = useState<"discover" | "interpolate" | "expedition">("discover");
   
@@ -48,7 +54,7 @@ const Index = () => {
             }
           }
         } catch (e) {}
-      }, 100); // 100ms is fine now since it doesn't trigger React updates
+      }, YOUTUBE_POLL_INTERVAL_MS); // 100ms is fine now since it doesn't trigger React updates
     }
     return () => clearInterval(interval);
   }, [isPlaying, player, trackDuration]);
@@ -96,7 +102,7 @@ const Index = () => {
       if (committedAudioWeight !== liveWeight) {
         setCommittedAudioWeight(liveWeight);
       }
-    }, 150);
+    }, SLIDER_DEBOUNCE_MS);
     return () => clearTimeout(handler);
   }, [liveWeight, committedAudioWeight]);
 
@@ -193,7 +199,7 @@ const Index = () => {
           setIsDropdownOpen(true);
         })
         .catch(err => console.error(err));
-    }, 300);
+    }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(delayDebounceFn);
   }, [activeSearchQuery, interpolateFocusMode]);
 
@@ -223,7 +229,7 @@ const Index = () => {
             previewProgressRef.current = progress;
           }
         } catch (e) {}
-      }, 200);
+      }, PREVIEW_POLL_INTERVAL_MS);
     }
     return () => clearInterval(interval);
   }, [isPreviewPlaying, previewPlayer, previewDuration]);
@@ -716,17 +722,17 @@ const Index = () => {
               <div className="pt-2">
                 <Slider
                   min={0}
-                  max={100}
+                  max={MAX_SLIDER_VALUE}
                   step={1}
                   value={audioLyricsValue}
                   onValueChange={(val) => {
                     if (!isJourneyLocked) {
                       setAudioLyricsValue(val);
-                      setLiveWeight(val[0] / 100);
+                      setLiveWeight(val[0] / MAX_SLIDER_VALUE);
                     }
                   }}
                   onValueCommit={(val) => {
-                    if (!isJourneyLocked) setCommittedAudioWeight(val[0] / 100);
+                    if (!isJourneyLocked) setCommittedAudioWeight(val[0] / MAX_SLIDER_VALUE);
                   }}
                   className={`w-full ${isJourneyLocked ? 'pointer-events-none' : ''}`}
                   disabled={isJourneyLocked}
