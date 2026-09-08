@@ -25,10 +25,12 @@ By calculating the cosine similarity between these vectors, we construct a massi
 ## Running Locally
 
 1. **Backend:**
+   First, activate your virtual environment, then run the Python server script (which spins up the Uvicorn ASGI server internally):
    ```bash
+   # From the project root
+   source venv/bin/activate  # Or your specific venv activation command
    cd backend
-   pip install -r requirements.txt
-   uvicorn server:app --reload
+   python server.py
    ```
 
 2. **Frontend:**
