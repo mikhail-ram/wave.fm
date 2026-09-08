@@ -8,3 +8,9 @@ __pycache__/
 cookies.txt
 backend/tmp_audio/
 node_modules/
+*.mp4
+*.webm
+*.mkv
+*.mp3
+*.m4a
+*.wav
